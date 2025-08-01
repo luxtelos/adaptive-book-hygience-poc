@@ -1,7 +1,20 @@
 import React from 'react';
 import { FileTextIcon, PersonIcon, HomeIcon, ArrowRightIcon } from '@radix-ui/react-icons';
+import { CurrentView, FormData } from '../App'; // Import from App.tsx
 
-const AgentForm = ({ setCurrentView, formData, handleInputChange, handleFormSubmit }) => (
+interface AgentFormProps {
+  setCurrentView: (view: CurrentView) => void; // Use CurrentView
+  formData: FormData;
+  handleInputChange: (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => void;
+  handleFormSubmit: (e: React.FormEvent<HTMLFormElement> | React.MouseEvent<HTMLButtonElement>) => void;
+}
+
+const AgentForm: React.FC<AgentFormProps> = ({
+  setCurrentView,
+  formData,
+  handleInputChange,
+  handleFormSubmit
+}) => (
   <div className="min-h-screen bg-gray-50">
     <div className="bg-white shadow-sm border-b">
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -167,7 +180,7 @@ const AgentForm = ({ setCurrentView, formData, handleInputChange, handleFormSubm
                   name="bookkeepingChallenges"
                   value={formData.bookkeepingChallenges}
                   onChange={handleInputChange}
-                  rows="3"
+                  rows={3} // Fixed: Use number instead of string
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
                   placeholder="e.g., Reconciling bank accounts, categorizing transactions, managing inventory..."
                 />

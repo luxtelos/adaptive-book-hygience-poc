@@ -1,16 +1,36 @@
 import React, { useState } from 'react';
 import './App.css';
-import LandingPage from './components/LandingPage.tsx';
-import AgentForm from './components/AgentForm.tsx';
-import AssessmentApp from './components/Assessment.tsx';
+import LandingPage from './components/LandingPage';
+import AgentForm from './components/AgentForm';
+import Assessment from './components/Assessment';
+
+// 1. Define types for the state variables.
+export type CurrentView = 'landing' | 'agent-form' | 'assessment'; // Export for reuse
+export type CurrentStep = 'upload' | 'analysis' | 'results';
+export type ViewMode = 'business' | 'technical';
+
+// 2. Define an interface for the `formData` object.
+export interface FormData {
+  firstName: string;
+  lastName: string;
+  email: string;
+  phone: string;
+  company: string;
+  businessType: string;
+  bookkeepingChallenges: string;
+  currentSoftware: string;
+  monthlyRevenue: string;
+  urgencyLevel: string;
+}
 
 function App() {
-  const [currentView, setCurrentView] = useState('landing'); // State to manage current view
-  const [currentStep, setCurrentStep] = useState('upload'); // State for assessment steps
-  const [viewMode, setViewMode] = useState('business'); // State for view mode (business/technical)
-  const [uploadedFiles, setUploadedFiles] = useState([]); // State for uploaded files
-  const [isAnalyzing, setIsAnalyzing] = useState(false); // State for analysis progress
-  const [formData, setFormData] = useState({
+  // Define all the state variables needed for the different components
+  const [currentView, setCurrentView] = useState<CurrentView>('landing');
+  const [currentStep, setCurrentStep] = useState<CurrentStep>('upload');
+  const [viewMode, setViewMode] = useState<ViewMode>('business');
+  const [uploadedFiles, setUploadedFiles] = useState<string[]>([]);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [formData, setFormData] = useState<FormData>({
     firstName: '',
     lastName: '',
     email: '',
@@ -20,43 +40,41 @@ function App() {
     bookkeepingChallenges: '',
     currentSoftware: '',
     monthlyRevenue: '',
-    urgencyLevel: ''
-  }); // State for form data
+    urgencyLevel: '',
+  });
 
-  // Handler for form input changes
-  const handleInputChange = (e) => {
-    setFormData({
-      ...formData,
-      [e.target.name]: e.target.value
+  // Define all the handler functions
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
+    const { name, value } = e.target;
+    setFormData((prevData) => ({
+      ...prevData,
+      [name]: value,
+    }));
+  };
+
+  const handleFormSubmit = (e: React.FormEvent<HTMLFormElement> | React.MouseEvent<HTMLButtonElement>) => {
+    e.preventDefault();
+    setCurrentView('assessment');
+    // In a real app, you would send formData to your backend here
+  };
+
+  const handleFileUpload = (reportName: string) => {
+    setUploadedFiles((prevFiles) => {
+      if (prevFiles.includes(reportName)) {
+        return prevFiles; // Prevent duplicates
+      }
+      return [...prevFiles, reportName];
     });
   };
 
-  // Handler for form submission
-  const handleFormSubmit = () => {
-    setCurrentStep('upload');
-    setUploadedFiles([]);
-    setIsAnalyzing(false);
-    setViewMode('business');
-    setCurrentView('assessment');
-  };
-
-  // Handler for file uploads
-  const handleFileUpload = (reportName) => {
-    if (!uploadedFiles.includes(reportName)) {
-      setUploadedFiles([...uploadedFiles, reportName]);
-    }
-  };
-
-  // Handler for analysis
   const handleAnalysis = () => {
     setIsAnalyzing(true);
     setTimeout(() => {
       setIsAnalyzing(false);
       setCurrentStep('results');
-    }, 3000);
+    }, 4000); // Simulate a 4-second analysis process
   };
 
-  // Render the appropriate component based on currentView
   return (
     <div className="App">
       {currentView === 'landing' && <LandingPage setCurrentView={setCurrentView} />}
@@ -69,7 +87,7 @@ function App() {
         />
       )}
       {currentView === 'assessment' && (
-        <AssessmentApp
+        <Assessment
           currentStep={currentStep}
           setCurrentStep={setCurrentStep}
           viewMode={viewMode}

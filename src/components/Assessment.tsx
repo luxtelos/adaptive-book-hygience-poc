@@ -13,6 +13,47 @@ import {
   PlayIcon, 
   ReloadIcon 
 } from '@radix-ui/react-icons';
+import { useUser } from '@clerk/clerk-react';
+import { FormData, CurrentStep, ViewMode } from '../App'; // Import from App.tsx
+
+interface AssessmentAppProps {
+  currentStep: CurrentStep;
+  setCurrentStep: React.Dispatch<React.SetStateAction<CurrentStep>>;
+  viewMode: ViewMode;
+  setViewMode: React.Dispatch<React.SetStateAction<ViewMode>>;
+  uploadedFiles: string[];
+  setUploadedFiles: React.Dispatch<React.SetStateAction<string[]>>;
+  isAnalyzing: boolean;
+  setIsAnalyzing: React.Dispatch<React.SetStateAction<boolean>>;
+  formData: FormData; // Use full FormData interface
+  handleFileUpload: (reportName: string) => void;
+  handleAnalysis: () => void;
+}
+
+// 2. Define the types for the component's internal state.
+type ConnectionStatus = 'idle' | 'success' | 'error';
+
+interface Pillar {
+  name: string;
+  score: number;
+  status: 'good' | 'warning' | 'critical';
+}
+
+interface CriticalIssue {
+  problem: string;
+  location: string;
+  fix: string;
+  time: string;
+  priority: 'High' | 'Medium';
+}
+
+interface AssessmentResults {
+  overallScore: number;
+  category: string;
+  categoryColor: string;
+  pillars: Pillar[];
+  criticalIssues: CriticalIssue[];
+}
 
 const AssessmentApp = ({ 
   currentStep, 
@@ -26,15 +67,17 @@ const AssessmentApp = ({
   formData, 
   handleFileUpload, 
   handleAnalysis 
-}) => {
+}: AssessmentAppProps) => {
   const [isConnecting, setIsConnecting] = useState(false); // State for API connection loading
-  const [connectionStatus, setConnectionStatus] = useState(null); // null, 'success', 'error'
+  const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('idle');
   const [hasAttemptedConnection, setHasAttemptedConnection] = useState(false); // Track if API was attempted
   
+  const { isLoaded, isSignedIn, user } = useUser();
+
   // Temporary flag to control API usage (set to false until actual API is ready)
   const isApiEnabled = true;
 
-  const mockAssessmentResults = {
+  const mockAssessmentResults: AssessmentResults = {
     overallScore: 73,
     category: "MINOR FIXES NEEDED",
     categoryColor: "yellow",
@@ -63,7 +106,7 @@ const AssessmentApp = ({
     ]
   };
 
-  const requiredReports = [
+  const requiredReports: string[] = [
     "Profit and Loss Statement",
     "Balance Sheet",
     "General Ledger",
@@ -75,13 +118,13 @@ const AssessmentApp = ({
     "Audit Log"
   ];
 
-  const getScoreColor = (score) => {
+  const getScoreColor = (score: number): string => {
     if (score >= 80) return 'text-green-600';
     if (score >= 60) return 'text-yellow-600';
     return 'text-red-600';
   };
 
-  const getStatusIcon = (status) => {
+  const getStatusIcon = (status: 'good' | 'warning' | 'critical') => {
     switch (status) {
       case 'good': return <CheckCircledIcon className="w-5 h-5 text-green-500" />;
       case 'warning': return <ExclamationTriangleIcon className="w-5 h-5 text-yellow-500" />;
@@ -93,7 +136,7 @@ const AssessmentApp = ({
   // Simulate API connection to QuickBooks
   const handleQuickBooksConnect = () => {
     setIsConnecting(true);
-    setConnectionStatus(null);
+    setConnectionStatus('idle');
 
     // Simulate API call with a 3-second delay
     setTimeout(() => {
@@ -117,7 +160,7 @@ const AssessmentApp = ({
 
   // Automatically trigger API connection attempt when entering upload step
   useEffect(() => {
-    if (currentStep === 'upload' && !hasAttemptedConnection && !isConnecting && !connectionStatus) {
+    if (currentStep === 'upload' && !hasAttemptedConnection && !isConnecting && connectionStatus === 'idle') {
       handleQuickBooksConnect();
     }
   }, [currentStep, hasAttemptedConnection, isConnecting, connectionStatus]);
@@ -130,7 +173,11 @@ const AssessmentApp = ({
           <div className="flex justify-between items-center py-4">
             <h1 className="text-2xl font-bold text-gray-900">Financial Books Hygiene Assessment</h1>
             <div className="flex items-center space-x-4">
-              <span className="text-sm text-gray-600">Welcome, {formData.firstName || 'User'}</span>
+               {isLoaded && isSignedIn && user ? (
+                <span className="text-sm text-gray-600">Welcome, {user.username}</span>
+              ) : (
+                <span className="text-sm text-gray-600">Welcome</span> 
+              )}
               <div className="flex space-x-2">
                 <span className="px-3 py-1 text-sm bg-blue-100 text-blue-800 rounded-full">
                   QuickBooks Online Integration
@@ -172,7 +219,7 @@ const AssessmentApp = ({
               <p className="text-gray-600 mb-4">
                 Connect directly to your QuickBooks Online account for automated data extraction. Our secure API integration fetches all required reports instantly.
               </p>
-              {!isConnecting && !connectionStatus && (
+              {!isConnecting && connectionStatus === 'idle' && (
                 <button 
                   onClick={handleQuickBooksConnect}
                   className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition-colors flex items-center"
