@@ -1,5 +1,5 @@
 import React from 'react';
-import { FileText, User, Building, ArrowRight } from 'lucide-react';
+import { FileTextIcon, PersonIcon, HomeIcon, ArrowRightIcon } from '@radix-ui/react-icons';
 
 const AgentForm = ({ setCurrentView, formData, handleInputChange, handleFormSubmit }) => (
   <div className="min-h-screen bg-gray-50">
@@ -30,7 +30,7 @@ const AgentForm = ({ setCurrentView, formData, handleInputChange, handleFormSubm
           {/* Personal Information */}
           <div className="border-b pb-6">
             <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
-              <User className="w-5 h-5 mr-2" />
+              <PersonIcon className="w-5 h-5 mr-2" />
               Personal Information
             </h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -83,7 +83,7 @@ const AgentForm = ({ setCurrentView, formData, handleInputChange, handleFormSubm
           {/* Business Information */}
           <div className="border-b pb-6">
             <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
-              <Building className="w-5 h-5 mr-2" />
+              <HomeIcon className="w-5 h-5 mr-2" />
               Business Information
             </h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -155,7 +155,7 @@ const AgentForm = ({ setCurrentView, formData, handleInputChange, handleFormSubm
           {/* Assessment Details */}
           <div>
             <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
-              <FileText className="w-5 h-5 mr-2" />
+              <FileTextIcon className="w-5 h-5 mr-2" />
               Assessment Details
             </h3>
             <div className="space-y-4">
@@ -197,7 +197,7 @@ const AgentForm = ({ setCurrentView, formData, handleInputChange, handleFormSubm
               onClick={handleFormSubmit}
               className="w-full bg-blue-600 text-white py-3 rounded-lg text-lg font-semibold hover:bg-blue-700 transition-colors flex items-center justify-center"
             >
-              Continue to Assessment <ArrowRight className="w-5 h-5 ml-2" />
+              Continue to Assessment <ArrowRightIcon className="w-5 h-5 ml-2" />
             </button>
             <p className="text-sm text-gray-600 mt-2 text-center">
               This information helps us provide more accurate recommendations tailored to your business.
