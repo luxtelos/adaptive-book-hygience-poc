@@ -1,12 +1,12 @@
 import React from 'react';
 import { 
-  BarChart3, 
-  Shield, 
-  Clock, 
-  Users, 
-  Star, 
-  ArrowRight 
-} from 'lucide-react';
+  BarChartIcon, 
+  // ShieldIcon, 
+  ClockIcon, 
+  PersonIcon, 
+  StarIcon, 
+  ArrowRightIcon 
+} from '@radix-ui/react-icons';
 
 const LandingPage = ({ setCurrentView }) => (
   <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
@@ -15,7 +15,7 @@ const LandingPage = ({ setCurrentView }) => (
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between items-center py-4">
           <div className="flex items-center">
-            <BarChart3 className="w-8 h-8 text-blue-600 mr-3" />
+            <BarChartIcon className="w-8 h-8 text-blue-600 mr-3" />
             <h1 className="text-2xl font-bold text-gray-900">FinanceAI</h1>
           </div>
           <nav className="hidden md:flex space-x-8">
@@ -48,7 +48,7 @@ const LandingPage = ({ setCurrentView }) => (
             onClick={() => setCurrentView('agent-form')}
             className="bg-blue-600 text-white px-8 py-4 rounded-lg text-lg font-semibold hover:bg-blue-700 transition-colors flex items-center justify-center"
           >
-            Start Free Assessment <ArrowRight className="w-5 h-5 ml-2" />
+            Start Free Assessment <ArrowRightIcon className="w-5 h-5 ml-2" />
           </button>
           <button className="border-2 border-blue-600 text-blue-600 px-8 py-4 rounded-lg text-lg font-semibold hover:bg-blue-50 transition-colors">
             Watch Demo
@@ -84,7 +84,7 @@ const LandingPage = ({ setCurrentView }) => (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
           <div className="text-center p-6">
             <div className="bg-blue-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
-              <Shield className="w-8 h-8 text-blue-600" />
+              {/* <ShieldIcon className="w-8 h-8 text-blue-600" /> */}
             </div>
             <h3 className="text-lg font-semibold mb-2">Secure & Private</h3>
             <p className="text-gray-600">Bank-level security with encrypted data processing</p>
@@ -92,7 +92,7 @@ const LandingPage = ({ setCurrentView }) => (
 
           <div className="text-center p-6">
             <div className="bg-green-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
-              <Clock className="w-8 h-8 text-green-600" />
+              <ClockIcon className="w-8 h-8 text-green-600" />
             </div>
             <h3 className="text-lg font-semibold mb-2">Fast Results</h3>
             <p className="text-gray-600">Get comprehensive analysis in under 15 minutes</p>
@@ -100,7 +100,7 @@ const LandingPage = ({ setCurrentView }) => (
 
           <div className="text-center p-6">
             <div className="bg-purple-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
-              <Users className="w-8 h-8 text-purple-600" />
+              <PersonIcon className="w-8 h-8 text-purple-600" />
             </div>
             <h3 className="text-lg font-semibold mb-2">Dual Audience</h3>
             <p className="text-gray-600">Reports for both business owners and bookkeepers</p>
@@ -108,7 +108,7 @@ const LandingPage = ({ setCurrentView }) => (
 
           <div className="text-center p-6">
             <div className="bg-yellow-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
-              <Star className="w-8 h-8 text-yellow-600" />
+              <StarIcon className="w-8 h-8 text-yellow-600" />
             </div>
             <h3 className="text-lg font-semibold mb-2">Actionable Insights</h3>
             <p className="text-gray-600">Step-by-step remediation plans with time estimates</p>
@@ -168,7 +168,7 @@ const LandingPage = ({ setCurrentView }) => (
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="text-center">
           <div className="flex items-center justify-center mb-4">
-            <BarChart3 className="w-8 h-8 text-blue-400 mr-3" />
+            <BarChartIcon className="w-8 h-8 text-blue-400 mr-3" />
             <span className="text-2xl font-bold">FinanceAI</span>
           </div>
           <p className="text-gray-400">© 2025 FinanceAI. All rights reserved.</p>

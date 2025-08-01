@@ -1,18 +1,18 @@
 import React, { useState, useEffect } from 'react';
 import { 
-  Link, 
-  Upload, 
-  CheckCircle, 
-  AlertTriangle, 
-  XCircle, 
-  Eye, 
-  Settings, 
-  Calendar, 
-  BarChart3, 
-  Download, 
-  Play, 
-  RefreshCw 
-} from 'lucide-react';
+  Link2Icon, 
+  UploadIcon, 
+  CheckCircledIcon, 
+  ExclamationTriangleIcon, 
+  CrossCircledIcon, 
+  EyeOpenIcon, 
+  GearIcon, 
+  CalendarIcon, 
+  BarChartIcon, 
+  DownloadIcon, 
+  PlayIcon, 
+  ReloadIcon 
+} from '@radix-ui/react-icons';
 
 const AssessmentApp = ({ 
   currentStep, 
@@ -83,9 +83,9 @@ const AssessmentApp = ({
 
   const getStatusIcon = (status) => {
     switch (status) {
-      case 'good': return <CheckCircle className="w-5 h-5 text-green-500" />;
-      case 'warning': return <AlertTriangle className="w-5 h-5 text-yellow-500" />;
-      case 'critical': return <XCircle className="w-5 h-5 text-red-500" />;
+      case 'good': return <CheckCircledIcon className="w-5 h-5 text-green-500" />;
+      case 'warning': return <ExclamationTriangleIcon className="w-5 h-5 text-yellow-500" />;
+      case 'critical': return <CrossCircledIcon className="w-5 h-5 text-red-500" />;
       default: return null;
     }
   };
@@ -166,7 +166,7 @@ const AssessmentApp = ({
             {/* QuickBooks Connection */}
             <div className="bg-white rounded-lg shadow p-6">
               <h2 className="text-xl font-semibold mb-4 flex items-center">
-                <Link className="w-5 h-5 mr-2" />
+                <Link2Icon className="w-5 h-5 mr-2" />
                 Connect to QuickBooks Online
               </h2>
               <p className="text-gray-600 mb-4">
@@ -177,27 +177,27 @@ const AssessmentApp = ({
                   onClick={handleQuickBooksConnect}
                   className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition-colors flex items-center"
                 >
-                  <Link className="w-5 h-5 mr-2" />
+                  <Link2Icon className="w-5 h-5 mr-2" />
                   Connect to QuickBooks
                 </button>
               )}
               {isConnecting && (
                 <div className="flex flex-col items-center">
-                  <RefreshCw className="w-8 h-8 text-blue-600 animate-spin mb-4" />
+                  <ReloadIcon className="w-8 h-8 text-blue-600 animate-spin mb-4" />
                   <p className="text-lg font-medium text-gray-900">Connecting to QuickBooks...</p>
                   <p className="text-sm text-gray-600 mt-2">Fetching your financial data</p>
                 </div>
               )}
               {connectionStatus === 'error' && (
                 <div className="flex flex-col items-center">
-                  <XCircle className="w-8 h-8 text-red-500 mb-4" />
+                  <CrossCircledIcon className="w-8 h-8 text-red-500 mb-4" />
                   <p className="text-lg font-medium text-gray-900">Connection Failed</p>
                   <p className="text-sm text-gray-600 mt-2">Unable to connect to QuickBooks. Please try again or upload files manually below.</p>
                   <button 
                     onClick={handleQuickBooksConnect}
                     className="mt-4 bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition-colors flex items-center"
                   >
-                    <RefreshCw className="w-5 h-5 mr-2" />
+                    <ReloadIcon className="w-5 h-5 mr-2" />
                     Retry Connection
                   </button>
                 </div>
@@ -208,7 +208,7 @@ const AssessmentApp = ({
             {connectionStatus === 'error' && (
               <div className="bg-white rounded-lg shadow p-6">
                 <h2 className="text-xl font-semibold mb-4 flex items-center">
-                  <Upload className="w-5 h-5 mr-2" />
+                  <UploadIcon className="w-5 h-5 mr-2" />
                   Manual Report Upload
                 </h2>
                 <p className="text-gray-600 mb-4">
@@ -220,7 +220,7 @@ const AssessmentApp = ({
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">Current Fiscal Year</label>
                     <div className="flex items-center border rounded-lg px-3 py-2">
-                      <Calendar className="w-4 h-4 mr-2 text-gray-400" />
+                      <CalendarIcon className="w-4 h-4 mr-2 text-gray-400" />
                       <select className="w-full border-none focus:outline-none">
                         <option>2024</option>
                         <option>2023</option>
@@ -230,7 +230,7 @@ const AssessmentApp = ({
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">Previous Fiscal Year</label>
                     <div className="flex items-center border rounded-lg px-3 py-2">
-                      <Calendar className="w-4 h-4 mr-2 text-gray-400" />
+                      <CalendarIcon className="w-4 h-4 mr-2 text-gray-400" />
                       <select className="w-full border-none focus:outline-none">
                         <option>2023</option>
                         <option>2022</option>
@@ -240,7 +240,7 @@ const AssessmentApp = ({
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">Rolling 13 Months</label>
                     <div className="flex items-center border rounded-lg px-3 py-2">
-                      <Calendar className="w-4 h-4 mr-2 text-gray-400" />
+                      <CalendarIcon className="w-4 h-4 mr-2 text-gray-400" />
                       <input type="text" value="Jan 2023 - Jan 2024" className="w-full border-none focus:outline-none" readOnly />
                     </div>
                   </div>
@@ -253,9 +253,9 @@ const AssessmentApp = ({
                       <div className="flex items-center justify-between mb-2">
                         <span className="font-medium text-gray-900">{report}</span>
                         {uploadedFiles.includes(report) ? (
-                          <CheckCircle className="w-5 h-5 text-green-500" />
+                          <CheckCircledIcon className="w-5 h-5 text-green-500" />
                         ) : (
-                          <Upload className="w-5 h-5 text-gray-400" />
+                          <UploadIcon className="w-5 h-5 text-gray-400" />
                         )}
                       </div>
                       <button 
@@ -298,12 +298,12 @@ const AssessmentApp = ({
                 onClick={handleAnalysis}
                 className="bg-blue-600 text-white px-8 py-3 rounded-lg hover:bg-blue-700 transition-colors flex items-center mx-auto"
               >
-                <Play className="w-5 h-5 mr-2" />
+                <PlayIcon className="w-5 h-5 mr-2" />
                 Run Assessment
               </button>
             ) : (
               <div className="flex flex-col items-center">
-                <RefreshCw className="w-8 h-8 text-blue-600 animate-spin mb-4" />
+                <ReloadIcon className="w-8 h-8 text-blue-600 animate-spin mb-4" />
                 <p className="text-lg font-medium text-gray-900">Analyzing Your Financial Data...</p>
                 <p className="text-sm text-gray-600 mt-2">This may take a few moments</p>
               </div>
@@ -321,14 +321,14 @@ const AssessmentApp = ({
                   onClick={() => setViewMode('business')}
                   className={`flex items-center px-4 py-2 rounded-lg transition-colors ${viewMode === 'business' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
                 >
-                  <Eye className="w-4 h-4 mr-2" />
+                  <EyeOpenIcon className="w-4 h-4 mr-2" />
                   Business Owner View
                 </button>
                 <button 
                   onClick={() => setViewMode('technical')}
                   className={`flex items-center px-4 py-2 rounded-lg transition-colors ${viewMode === 'technical' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
                 >
-                  <Settings className="w-4 h-4 mr-2" />
+                  <GearIcon className="w-4 h-4 mr-2" />
                   Bookkeeper View
                 </button>
               </div>
@@ -389,7 +389,7 @@ const AssessmentApp = ({
                 {/* Pillar Breakdown */}
                 <div className="bg-white rounded-lg shadow p-6">
                   <h3 className="text-xl font-semibold mb-4 flex items-center">
-                    <BarChart3 className="w-5 h-5 mr-2" />
+                    <BarChartIcon className="w-5 h-5 mr-2" />
                     Areas of Your Financial System
                   </h3>
                   <div className="space-y-4">
@@ -421,7 +421,7 @@ const AssessmentApp = ({
                 <div className="flex justify-between items-center">
                   <h2 className="text-2xl font-semibold">Technical Remediation Plan</h2>
                   <button className="flex items-center bg-gray-600 text-white px-4 py-2 rounded-lg hover:bg-gray-700 transition-colors">
-                    <Download className="w-4 h-4 mr-2" />
+                    <DownloadIcon className="w-4 h-4 mr-2" />
                     Export Report
                   </button>
                 </div>
@@ -430,7 +430,7 @@ const AssessmentApp = ({
                 <div className="bg-white rounded-lg shadow">
                   <div className="px-6 py-4 border-b">
                     <h3 className="text-lg font-semibold text-red-600 flex items-center">
-                      <XCircle className="w-5 h-5 mr-2" />
+                      <CrossCircledIcon className="w-5 h-5 mr-2" />
                       Critical Issues Requiring Immediate Action
                     </h3>
                   </div>
