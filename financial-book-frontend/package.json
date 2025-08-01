@@ -2,6 +2,7 @@
   "name": "financial-book-frontend",
   "version": "0.1.0",
   "private": true,
+  "main": "src/index.tsx",
   "dependencies": {
     "@testing-library/dom": "^10.4.1",
     "@testing-library/jest-dom": "^6.6.4",
