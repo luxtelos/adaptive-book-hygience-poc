@@ -1,14 +1,13 @@
 import React from 'react';
-import { 
-  BarChartIcon, 
-  // ShieldIcon, 
-  ClockIcon, 
-  PersonIcon, 
-  StarIcon, 
-  ArrowRightIcon 
-} from '@radix-ui/react-icons';
+import { SignedIn, SignedOut, SignInButton, UserButton } from '@clerk/clerk-react';
+import { BarChartIcon, ClockIcon, PersonIcon, StarIcon, ArrowRightIcon } from '@radix-ui/react-icons';
+import { CurrentView } from '../App'; // Import CurrentView from App.tsx
 
-const LandingPage = ({ setCurrentView }) => (
+interface LandingPageProps {
+  setCurrentView: (view: CurrentView) => void; // Use CurrentView
+}
+
+const LandingPage: React.FC<LandingPageProps> = ({ setCurrentView }) => (
   <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
     {/* Header */}
     <header className="bg-white shadow-sm">
@@ -18,17 +17,46 @@ const LandingPage = ({ setCurrentView }) => (
             <BarChartIcon className="w-8 h-8 text-blue-600 mr-3" />
             <h1 className="text-2xl font-bold text-gray-900">FinanceAI</h1>
           </div>
-          <nav className="hidden md:flex space-x-8">
-            <a href="#features" className="text-gray-700 hover:text-blue-600">Features</a>
-            <a href="#how-it-works" className="text-gray-700 hover:text-blue-600">How It Works</a>
-            <a href="#pricing" className="text-gray-700 hover:text-blue-600">Pricing</a>
-            <button 
-              onClick={() => setCurrentView('agent-form')}
-              className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
-            >
-              Get Started
-            </button>
+          
+          <nav className="hidden md:flex items-center space-x-8">
+            <a href="#features" className="text-gray-700 hover:text-blue-600 transition-colors">Features</a>
+            <a href="#how-it-works" className="text-gray-700 hover:text-blue-600 transition-colors">How It Works</a>
+            <a href="#pricing" className="text-gray-700 hover:text-blue-600 transition-colors">Pricing</a>
+            
+            <SignedOut>
+              <SignInButton>
+                <button className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors">
+                  Get Started
+                </button>
+              </SignInButton>
+            </SignedOut>
+            
+            <SignedIn>
+              <UserButton />
+            </SignedIn>
           </nav>
+
+          {/* Mobile menu */}
+          <div className="md:hidden">
+            <SignedOut>
+              <SignInButton>
+                <button className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors">
+                  Get Started
+                </button>
+              </SignInButton>
+            </SignedOut>
+            <SignedIn>
+              <div className="flex items-center space-x-2">
+                <button 
+                  onClick={() => setCurrentView('agent-form')}
+                  className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
+                >
+                  Get Started
+                </button>
+                <UserButton />
+              </div>
+            </SignedIn>
+          </div>
         </div>
       </div>
     </header>
@@ -44,12 +72,21 @@ const LandingPage = ({ setCurrentView }) => (
           provide actionable insights, and ensure your books are ready for growth.
         </p>
         <div className="flex flex-col sm:flex-row gap-4 justify-center">
-          <button 
-            onClick={() => setCurrentView('agent-form')}
-            className="bg-blue-600 text-white px-8 py-4 rounded-lg text-lg font-semibold hover:bg-blue-700 transition-colors flex items-center justify-center"
-          >
-            Start Free Assessment <ArrowRightIcon className="w-5 h-5 ml-2" />
-          </button>
+          <SignedOut>
+            <SignInButton>
+              <button className="bg-blue-600 text-white px-8 py-4 rounded-lg text-lg font-semibold hover:bg-blue-700 transition-colors flex items-center justify-center">
+                Start Free Assessment <ArrowRightIcon className="w-5 h-5 ml-2" />
+              </button>
+            </SignInButton>
+          </SignedOut>
+          <SignedIn>
+            <button 
+              onClick={() => setCurrentView('agent-form')}
+              className="bg-blue-600 text-white px-8 py-4 rounded-lg text-lg font-semibold hover:bg-blue-700 transition-colors flex items-center justify-center"
+            >
+              Start Free Assessment <ArrowRightIcon className="w-5 h-5 ml-2" />
+            </button>
+          </SignedIn>
           <button className="border-2 border-blue-600 text-blue-600 px-8 py-4 rounded-lg text-lg font-semibold hover:bg-blue-50 transition-colors">
             Watch Demo
           </button>
@@ -84,7 +121,7 @@ const LandingPage = ({ setCurrentView }) => (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
           <div className="text-center p-6">
             <div className="bg-blue-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
-              {/* <ShieldIcon className="w-8 h-8 text-blue-600" /> */}
+              {/* Removed ShieldIcon as it was commented out */}
             </div>
             <h3 className="text-lg font-semibold mb-2">Secure & Private</h3>
             <p className="text-gray-600">Bank-level security with encrypted data processing</p>
@@ -154,12 +191,21 @@ const LandingPage = ({ setCurrentView }) => (
         <p className="text-xl text-blue-100 mb-8">
           Join thousands of businesses who have optimized their bookkeeping with our AI assessment
         </p>
-        <button 
-          onClick={() => setCurrentView('agent-form')}
-          className="bg-white text-blue-600 px-8 py-4 rounded-lg text-lg font-semibold hover:bg-gray-50 transition-colors"
-        >
-          Start Your Free Assessment Now
-        </button>
+        <SignedOut>
+          <SignInButton>
+            <button className="bg-white text-blue-600 px-8 py-4 rounded-lg text-lg font-semibold hover:bg-gray-50 transition-colors">
+              Start Your Free Assessment Now
+            </button>
+          </SignInButton>
+        </SignedOut>
+        <SignedIn>
+          <button 
+            onClick={() => setCurrentView('agent-form')}
+            className="bg-white text-blue-600 px-8 py-4 rounded-lg text-lg font-semibold hover:bg-gray-50 transition-colors"
+          >
+            Start Your Free Assessment Now
+          </button>
+        </SignedIn>
       </div>
     </section>
 
