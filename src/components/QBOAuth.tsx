@@ -6,6 +6,7 @@ import { FormData } from '../App';
 // QuickBooks OAuth Configuration
 const CLIENT_ID = "ABEnKNphNihkXsIe0jRb5EbxBgcEZ0MOrlsNobcRFMfDVJWmgX";
 const REDIRECT_URI = "https://n8n-1-102-1-c1zi.onrender.com/webhook/115c6828-fb49-4a60-aa8d-e6eb5346f24d";
+// const REDIRECT_URI = `${window.location.origin}/oauth-callback`;
 const SCOPE = "com.intuit.quickbooks.accounting";
 
 interface QBOAuthProps {
