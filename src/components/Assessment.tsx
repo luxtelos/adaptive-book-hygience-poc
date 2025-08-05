@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { 
   Link2Icon, 
   UploadIcon, 
@@ -14,9 +15,9 @@ import {
   ReloadIcon 
 } from '@radix-ui/react-icons';
 import { useUser } from '@clerk/clerk-react';
-import { FormData, CurrentStep, ViewMode } from '../App'; // Import from App.tsx
+import { FormData, CurrentStep, ViewMode } from '../App';
 
-interface AssessmentAppProps {
+interface AssessmentProps {
   currentStep: CurrentStep;
   setCurrentStep: React.Dispatch<React.SetStateAction<CurrentStep>>;
   viewMode: ViewMode;
@@ -25,12 +26,14 @@ interface AssessmentAppProps {
   setUploadedFiles: React.Dispatch<React.SetStateAction<string[]>>;
   isAnalyzing: boolean;
   setIsAnalyzing: React.Dispatch<React.SetStateAction<boolean>>;
-  formData: FormData; // Use full FormData interface
+  formData: FormData;
   handleFileUpload: (reportName: string) => void;
   handleAnalysis: () => void;
+  accessToken: string | null;
+  realmId: string | null;
 }
 
-// 2. Define the types for the component's internal state.
+// Types for assessment results
 type ConnectionStatus = 'idle' | 'success' | 'error';
 
 interface Pillar {
@@ -55,7 +58,7 @@ interface AssessmentResults {
   criticalIssues: CriticalIssue[];
 }
 
-const AssessmentApp = ({ 
+const Assessment = ({ 
   currentStep, 
   setCurrentStep, 
   viewMode, 
@@ -66,16 +69,15 @@ const AssessmentApp = ({
   setIsAnalyzing, 
   formData, 
   handleFileUpload, 
-  handleAnalysis 
-}: AssessmentAppProps) => {
-  const [isConnecting, setIsConnecting] = useState(false); // State for API connection loading
-  const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('idle');
-  const [hasAttemptedConnection, setHasAttemptedConnection] = useState(false); // Track if API was attempted
+  handleAnalysis,
+  accessToken,
+  realmId
+}: AssessmentProps) => {
+  const navigate = useNavigate();
+  const [isFetchingData, setIsFetchingData] = useState(false);
+  const [dataFetchError, setDataFetchError] = useState<string | null>(null);
   
   const { isLoaded, isSignedIn, user } = useUser();
-
-  // Temporary flag to control API usage (set to false until actual API is ready)
-  const isApiEnabled = true;
 
   const mockAssessmentResults: AssessmentResults = {
     overallScore: 73,
@@ -118,6 +120,34 @@ const AssessmentApp = ({
     "Audit Log"
   ];
 
+  // Auto-fetch data when component loads if we have access token
+  useEffect(() => {
+    if (accessToken && realmId && currentStep === 'upload' && uploadedFiles.length === 0) {
+      handleQBODataFetch();
+    }
+  }, [accessToken, realmId, currentStep]);
+
+  const handleQBODataFetch = async () => {
+    setIsFetchingData(true);
+    setDataFetchError(null);
+
+    try {
+      // TODO: Replace with actual API call to fetch QBO data
+      // For now, simulate the data fetching process
+      await new Promise(resolve => setTimeout(resolve, 3000));
+      
+      // Simulate successful data fetch
+      setUploadedFiles(requiredReports);
+      setCurrentStep('analysis');
+      
+    } catch (error) {
+      console.error('Error fetching QBO data:', error);
+      setDataFetchError('Failed to fetch data from QuickBooks. Please try manual upload.');
+    } finally {
+      setIsFetchingData(false);
+    }
+  };
+
   const getScoreColor = (score: number): string => {
     if (score >= 80) return 'text-green-600';
     if (score >= 60) return 'text-yellow-600';
@@ -133,38 +163,6 @@ const AssessmentApp = ({
     }
   };
 
-  // Simulate API connection to QuickBooks
-  const handleQuickBooksConnect = () => {
-    setIsConnecting(true);
-    setConnectionStatus('idle');
-
-    // Simulate API call with a 3-second delay
-    setTimeout(() => {
-      // Force failure if API is disabled, otherwise use random success/failure (70% success rate)
-      const isSuccess = isApiEnabled ? Math.random() > 0.3 : false;
-      
-      if (isSuccess) {
-        // On success, mark all required reports as "uploaded" and move to analysis step
-        setUploadedFiles(requiredReports);
-        setConnectionStatus('success');
-        setIsConnecting(false);
-        setCurrentStep('analysis'); // Automatically transition to analysis step
-      } else {
-        // On failure, set error status
-        setConnectionStatus('error');
-        setIsConnecting(false);
-      }
-      setHasAttemptedConnection(true);
-    }, 3000);
-  };
-
-  // Automatically trigger API connection attempt when entering upload step
-  useEffect(() => {
-    if (currentStep === 'upload' && !hasAttemptedConnection && !isConnecting && connectionStatus === 'idle') {
-      handleQuickBooksConnect();
-    }
-  }, [currentStep, hasAttemptedConnection, isConnecting, connectionStatus]);
-
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
@@ -173,15 +171,21 @@ const AssessmentApp = ({
           <div className="flex justify-between items-center py-4">
             <h1 className="text-2xl font-bold text-gray-900">Financial Books Hygiene Assessment</h1>
             <div className="flex items-center space-x-4">
-               {isLoaded && isSignedIn && user ? (
+              {isLoaded && isSignedIn && user ? (
                 <span className="text-sm text-gray-600">Welcome, {user.username}</span>
               ) : (
-                <span className="text-sm text-gray-600">Welcome</span> 
+                <span className="text-sm text-gray-600">Welcome, {formData.firstName}</span> 
               )}
               <div className="flex space-x-2">
-                <span className="px-3 py-1 text-sm bg-blue-100 text-blue-800 rounded-full">
-                  QuickBooks Online Integration
+                <span className="px-3 py-1 text-sm bg-green-100 text-green-800 rounded-full">
+                  QuickBooks Connected
                 </span>
+                <button 
+                  onClick={() => navigate('/qbo-auth')}
+                  className="text-gray-600 hover:text-gray-900 text-sm"
+                >
+                  Settings
+                </button>
               </div>
             </div>
           </div>
@@ -194,7 +198,7 @@ const AssessmentApp = ({
           <div className="flex items-center justify-center space-x-8">
             <div className={`flex items-center ${currentStep === 'upload' ? 'text-blue-600' : 'text-gray-400'}`}>
               <div className={`w-8 h-8 rounded-full flex items-center justify-center ${currentStep === 'upload' ? 'bg-blue-600 text-white' : 'bg-gray-200'}`}>1</div>
-              <span className="ml-2 font-medium">Data Upload</span>
+              <span className="ml-2 font-medium">Data Fetch</span>
             </div>
             <div className={`flex items-center ${currentStep === 'analysis' ? 'text-blue-600' : 'text-gray-400'}`}>
               <div className={`w-8 h-8 rounded-full flex items-center justify-center ${currentStep === 'analysis' ? 'bg-blue-600 text-white' : 'bg-gray-200'}`}>2</div>
@@ -207,59 +211,79 @@ const AssessmentApp = ({
           </div>
         </div>
 
-        {/* Upload Step */}
+        {/* Upload/Data Fetch Step */}
         {currentStep === 'upload' && (
           <div className="space-y-6">
-            {/* QuickBooks Connection */}
+            {/* QBO Data Fetch Status */}
             <div className="bg-white rounded-lg shadow p-6">
               <h2 className="text-xl font-semibold mb-4 flex items-center">
                 <Link2Icon className="w-5 h-5 mr-2" />
-                Connect to QuickBooks Online
+                Fetching Data from QuickBooks Online
               </h2>
-              <p className="text-gray-600 mb-4">
-                Connect directly to your QuickBooks Online account for automated data extraction. Our secure API integration fetches all required reports instantly.
-              </p>
-              {!isConnecting && connectionStatus === 'idle' && (
-                <button 
-                  onClick={handleQuickBooksConnect}
-                  className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition-colors flex items-center"
-                >
-                  <Link2Icon className="w-5 h-5 mr-2" />
-                  Connect to QuickBooks
-                </button>
-              )}
-              {isConnecting && (
-                <div className="flex flex-col items-center">
-                  <ReloadIcon className="w-8 h-8 text-blue-600 animate-spin mb-4" />
-                  <p className="text-lg font-medium text-gray-900">Connecting to QuickBooks...</p>
-                  <p className="text-sm text-gray-600 mt-2">Fetching your financial data</p>
+              
+              {isFetchingData && (
+                <div className="flex flex-col items-center py-8">
+                  <ReloadIcon className="w-12 h-12 text-blue-600 animate-spin mb-4" />
+                  <p className="text-lg font-medium text-gray-900">Fetching Financial Reports...</p>
+                  <p className="text-sm text-gray-600 mt-2">
+                    Connected to: {formData.company} (Realm ID: {realmId})
+                  </p>
+                  <div className="mt-4 w-full max-w-md">
+                    <div className="bg-gray-200 rounded-full h-2">
+                      <div className="bg-blue-600 h-2 rounded-full animate-pulse" style={{width: '60%'}}></div>
+                    </div>
+                  </div>
                 </div>
               )}
-              {connectionStatus === 'error' && (
-                <div className="flex flex-col items-center">
-                  <CrossCircledIcon className="w-8 h-8 text-red-500 mb-4" />
-                  <p className="text-lg font-medium text-gray-900">Connection Failed</p>
-                  <p className="text-sm text-gray-600 mt-2">Unable to connect to QuickBooks. Please try again or upload files manually below.</p>
-                  <button 
-                    onClick={handleQuickBooksConnect}
-                    className="mt-4 bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition-colors flex items-center"
-                  >
-                    <ReloadIcon className="w-5 h-5 mr-2" />
-                    Retry Connection
-                  </button>
+
+              {!isFetchingData && uploadedFiles.length === 0 && !dataFetchError && (
+                <button 
+                  onClick={handleQBODataFetch}
+                  className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition-colors flex items-center"
+                >
+                  <Link2Icon className="w-5 h-5 mr-2" />
+                  Fetch Data from QuickBooks
+                </button>
+              )}
+
+              {uploadedFiles.length > 0 && (
+                <div className="flex flex-col items-center py-4">
+                  <CheckCircledIcon className="w-12 h-12 text-green-600 mb-4" />
+                  <p className="text-lg font-medium text-gray-900">Data Successfully Fetched!</p>
+                  <p className="text-sm text-gray-600 mt-2">
+                    Retrieved {uploadedFiles.length} reports from QuickBooks Online
+                  </p>
+                </div>
+              )}
+
+              {dataFetchError && (
+                <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                  <div className="flex items-start">
+                    <CrossCircledIcon className="w-5 h-5 text-red-500 mr-3 mt-0.5" />
+                    <div>
+                      <p className="text-red-800 font-medium">Data Fetch Failed</p>
+                      <p className="text-red-700 text-sm mt-1">{dataFetchError}</p>
+                      <button 
+                        onClick={handleQBODataFetch}
+                        className="mt-3 bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700 transition-colors text-sm"
+                      >
+                        Retry Fetch
+                      </button>
+                    </div>
+                  </div>
                 </div>
               )}
             </div>
 
-            {/* Manual Upload (shown only on API failure) */}
-            {connectionStatus === 'error' && (
+            {/* Manual Upload Fallback */}
+            {(dataFetchError || (!isFetchingData && uploadedFiles.length === 0)) && (
               <div className="bg-white rounded-lg shadow p-6">
                 <h2 className="text-xl font-semibold mb-4 flex items-center">
                   <UploadIcon className="w-5 h-5 mr-2" />
-                  Manual Report Upload
+                  Manual Report Upload (Fallback)
                 </h2>
                 <p className="text-gray-600 mb-4">
-                  The API could not fetch your data. Please upload Excel (.xlsx) reports from QuickBooks Online manually. <strong>Note:</strong> Export as Excel format, not PDF.
+                  If automatic data fetching fails, you can upload Excel (.xlsx) reports manually from QuickBooks Online.
                 </p>
 
                 {/* Date Range Selection */}
@@ -329,6 +353,19 @@ const AssessmentApp = ({
                 </div>
               </div>
             )}
+
+            {/* Auto-proceed when data is fetched */}
+            {uploadedFiles.length > 0 && !isFetchingData && (
+              <div className="bg-white rounded-lg shadow p-6 text-center">
+                <p className="text-gray-600 mb-4">All required data has been fetched successfully!</p>
+                <button 
+                  onClick={() => setCurrentStep('analysis')}
+                  className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition-colors"
+                >
+                  Continue to Analysis
+                </button>
+              </div>
+            )}
           </div>
         )}
 
@@ -339,6 +376,15 @@ const AssessmentApp = ({
             <p className="text-gray-600 mb-6">
               We'll analyze your financial data across 5 key pillars to assess your books' hygiene and provide actionable recommendations.
             </p>
+            
+            <div className="mb-6 bg-green-50 border border-green-200 rounded-lg p-4">
+              <p className="text-green-800 font-medium">
+                ✓ Successfully connected to {formData.company}
+              </p>
+              <p className="text-green-700 text-sm mt-1">
+                {uploadedFiles.length} reports ready for analysis
+              </p>
+            </div>
             
             {!isAnalyzing ? (
               <button 
@@ -412,7 +458,7 @@ const AssessmentApp = ({
 
                 {/* What This Means */}
                 <div className="bg-white rounded-lg shadow p-6">
-                  <h3 className="text-xl font-semibold mb-4">What This Means for Your Business</h3>
+                  <h3 className="text-xl font-semibold mb-4">What This Means for {formData.company}</h3>
                   <div className="prose text-gray-700">
                     <p>Your financial records are generally well-maintained but need some attention in specific areas. With minor fixes, your books will be ready for reliable monthly operations and accurate financial reporting.</p>
                     
@@ -551,4 +597,4 @@ const AssessmentApp = ({
   );
 };
 
-export default AssessmentApp;
+export default Assessment;
