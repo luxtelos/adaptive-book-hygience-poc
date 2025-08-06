@@ -87,15 +87,13 @@ const LandingPage: React.FC = () => {
   }, [user, isLoaded]);
 
   const handleGetStarted = () => {
-    if (userAssessment) {
-      // User has existing data, skip form and go to QBO Auth
-      logger.info("User has existing data, redirecting to QBO Auth");
-      navigate("/qbo-auth");
-    } else {
-      // User needs to fill the form first
-      logger.info("User needs to fill form first");
-      navigate("/form");
-    }
+    const hasAssessment = !!userAssessment;
+    const targetRoute = hasAssessment ? "/qbo-auth" : "/form";
+    const logMsg = hasAssessment
+      ? "User has existing data, redirecting to QBO Auth"
+      : "User needs to fill form first";
+    logger.info(logMsg);
+    navigate(targetRoute);
   };
 
   const handleStartNewAssessment = () => {
