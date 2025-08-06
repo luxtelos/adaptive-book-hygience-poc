@@ -8,6 +8,7 @@ import {
   UserButton,
   useUser,
 } from "@clerk/clerk-react";
+import { useRegistrationFlow } from "../hooks/useRegistrationFlow";
 import {
   CheckCircledIcon,
   BarChartIcon,
@@ -20,9 +21,10 @@ import {
 const LandingPage: React.FC = () => {
   const navigate = useNavigate();
   const { user } = useUser();
+  const { isCheckingRegistration, startAssessment } = useRegistrationFlow();
 
   const handleGetStarted = () => {
-    navigate("/form");
+    startAssessment();
   };
 
   return (
@@ -107,10 +109,19 @@ const LandingPage: React.FC = () => {
               <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
                 <button
                   onClick={handleGetStarted}
-                  className="bg-blue-600 text-white px-8 py-4 rounded-lg text-lg font-semibold hover:bg-blue-700 transition-colors flex items-center"
+                  disabled={isCheckingRegistration}
+                  className="bg-blue-600 text-white px-8 py-4 rounded-lg text-lg font-semibold hover:bg-blue-700 transition-colors flex items-center disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  Continue to Assessment{" "}
-                  <ArrowRightIcon className="w-5 h-5 ml-2" />
+                  {isCheckingRegistration ? (
+                    <>
+                      <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
+                      Checking Registration...
+                    </>
+                  ) : (
+                    <>
+                      Start Assessment <ArrowRightIcon className="w-5 h-5 ml-2" />
+                    </>
+                  )}
                 </button>
                 
               </div>
@@ -281,9 +292,10 @@ const LandingPage: React.FC = () => {
                 </p>
                 <button
                   onClick={handleGetStarted}
-                  className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition-colors"
+                  disabled={isCheckingRegistration}
+                  className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  Start Assessment
+                  {isCheckingRegistration ? 'Checking...' : 'Start Assessment'}
                 </button>
               </div>
 
@@ -481,9 +493,19 @@ const LandingPage: React.FC = () => {
             </p>
             <button
               onClick={handleGetStarted}
-              className="bg-white text-blue-600 px-8 py-4 rounded-lg text-lg font-semibold hover:bg-gray-50 transition-colors flex items-center mx-auto"
+              disabled={isCheckingRegistration}
+              className="bg-white text-blue-600 px-8 py-4 rounded-lg text-lg font-semibold hover:bg-gray-50 transition-colors flex items-center mx-auto disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              Continue Assessment <ArrowRightIcon className="w-5 h-5 ml-2" />
+              {isCheckingRegistration ? (
+                <>
+                  <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600 mr-2"></div>
+                  Checking Registration...
+                </>
+              ) : (
+                <>
+                  Start Assessment <ArrowRightIcon className="w-5 h-5 ml-2" />
+                </>
+              )}
             </button>
           </SignedIn>
         </div>

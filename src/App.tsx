@@ -1,20 +1,19 @@
 import React, { useState } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import { SignedIn, SignedOut } from '@clerk/clerk-react';
+import { ClerkProvider, SignedIn, SignedOut } from '@clerk/clerk-react';
 import './App.css';
 import LandingPage from './components/LandingPage';
+import Dashboard from './components/LandingPage';
 import AgentForm from './components/AgentForm';
 import QBOAuth from './components/QBOAuth';
-import OAuthCallback from './components/OAuthCallBack'; // Fixed typo
+import OAuthCallback from './components/OAuthCallBack';
 import Assessment from './components/Assessment';
+import AuthGuard from './components/AuthGuard';
 
-
-// 1. Define types for the state variables.
 export type CurrentView = 'landing' | 'agent-form' | 'qbo-auth' | 'assessment';
-export type CurrentStep = 'upload' | 'customer-selection' | 'analysis' | 'results';
+export type CurrentStep = 'upload' | 'analysis' | 'results';
 export type ViewMode = 'business' | 'technical';
 
-// 2. Define an interface for the `formData` object.
 export interface FormData {
   firstName: string;
   lastName: string;
@@ -28,44 +27,46 @@ export interface FormData {
   urgencyLevel: string;
 }
 
-// Protected Route Component
-const ProtectedRoute: React.FC<{ component: React.ComponentType<any>, [key: string]: any }> = ({ 
-  component: Component, 
-  ...props 
-}) => {
+const ProtectedRoute: React.FC<{
+  component: React.ComponentType<any>;
+  requiresRegistration?: boolean;
+  [key: string]: any;
+}> = ({ component: Component, requiresRegistration = false, ...props }) => {
   return (
     <SignedIn>
-      <Component {...props} />
+      {requiresRegistration ? (
+        <AuthGuard>
+          <Component {...props} />
+        </AuthGuard>
+      ) : (
+        <Component {...props} />
+      )}
     </SignedIn>
   );
 };
 
 function AppContent() {
-  // Define all the state variables needed for the different components
   const [currentStep, setCurrentStep] = useState<CurrentStep>('upload');
   const [viewMode, setViewMode] = useState<ViewMode>('business');
   const [uploadedFiles, setUploadedFiles] = useState<string[]>([]);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [formData, setFormData] = useState<FormData>({
-    firstName: '',
-    lastName: '',
-    email: '',
-    phone: '',
-    company: '',
-    businessType: '',
-    bookkeepingChallenges: '',
-    currentSoftware: '',
-    monthlyRevenue: '',
-    urgencyLevel: '',
+    firstName: "",
+    lastName: "",
+    email: "",
+    phone: "",
+    company: "",
+    businessType: "",
+    bookkeepingChallenges: "",
+    currentSoftware: "",
+    monthlyRevenue: "",
+    urgencyLevel: "",
   });
-
-  // QBO Auth states
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const [refreshToken, setRefreshToken] = useState<string | null>(null);
   const [realmId, setRealmId] = useState<string | null>(null);
   const [authError, setAuthError] = useState<string | null>(null);
 
-  // Define all the handler functions
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
     setFormData((prevData) => ({
@@ -77,7 +78,7 @@ function AppContent() {
   const handleFileUpload = (reportName: string) => {
     setUploadedFiles((prevFiles) => {
       if (prevFiles.includes(reportName)) {
-        return prevFiles; // Prevent duplicates
+        return prevFiles;
       }
       return [...prevFiles, reportName];
     });
@@ -88,52 +89,46 @@ function AppContent() {
     setTimeout(() => {
       setIsAnalyzing(false);
       setCurrentStep('results');
-    }, 4000); // Simulate a 4-second analysis process
+    }, 4000);
   };
 
   return (
     <Routes>
-      {/* Public Landing Page - shows sign in/up options */}
       <Route path="/" element={<LandingPage />} />
-      
-      {/* Protected Routes - require authentication */}
-      <Route 
-        path="/dashboard" 
+      <Route
+        path="/dashboard"
         element={
           <SignedIn>
-            <LandingPage />
+            <Dashboard />
           </SignedIn>
-        } 
+        }
       />
-      
-      <Route 
-        path="/form" 
+      <Route
+        path="/form"
         element={
           <ProtectedRoute
             component={AgentForm}
             formData={formData}
             handleInputChange={handleInputChange}
           />
-        } 
+        }
       />
-      
-      <Route 
-        path="/qbo-auth" 
+      <Route
+        path="/qbo-auth"
         element={
           <ProtectedRoute
             component={QBOAuth}
+            requiresRegistration={true}
             formData={formData}
             accessToken={accessToken}
             refreshToken={refreshToken}
             realmId={realmId}
             authError={authError}
           />
-        } 
+        }
       />
-      
-      {/* OAuth Callback - needs to be accessible during redirect */}
-      <Route 
-        path="/oauth-callback" 
+      <Route
+        path="/oauth-callback"
         element={
           <OAuthCallback
             setAccessToken={setAccessToken}
@@ -141,11 +136,10 @@ function AppContent() {
             setRealmId={setRealmId}
             setError={setAuthError}
           />
-        } 
+        }
       />
-      
-      <Route 
-        path="/assessment" 
+      <Route
+        path="/assessment"
         element={
           <SignedIn>
             {accessToken ? (
@@ -168,22 +162,20 @@ function AppContent() {
               <Navigate to="/qbo-auth" replace />
             )}
           </SignedIn>
-        } 
+        }
       />
-      
-      {/* Catch all - redirect based on auth status */}
-      <Route 
-        path="*" 
+      <Route
+        path="*"
         element={
           <>
             <SignedIn>
-              <Navigate to="/dashboard" replace />
+              <LandingPage />
             </SignedIn>
             <SignedOut>
               <Navigate to="/" replace />
             </SignedOut>
           </>
-        } 
+        }
       />
     </Routes>
   );
@@ -191,13 +183,11 @@ function AppContent() {
 
 function App() {
   return (
-   
-      <Router>
-        <div className="App">
-          <AppContent />
-        </div>
-      </Router>
-
+    <Router>
+      <div className="App">
+        <AppContent />
+      </div>
+    </Router>
   );
 }
 

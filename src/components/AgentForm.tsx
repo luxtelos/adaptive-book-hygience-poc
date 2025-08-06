@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useUser } from '@clerk/clerk-react';
 import { FileTextIcon, PersonIcon, HomeIcon, ArrowRightIcon } from '@radix-ui/react-icons';
 import { FormData } from '../App';
-import { supabase } from '../lib/supabaseConnect';
+import { RegistrationService } from '../lib/registrationService';
 
 interface AgentFormProps {
   formData: FormData;
@@ -14,55 +15,50 @@ const AgentForm: React.FC<AgentFormProps> = ({
   handleInputChange
 }) => {
   const navigate = useNavigate();
+  const { user } = useUser();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
-  const handleSupabaseSubmit = async (e: React.MouseEvent<HTMLButtonElement>) => {
+  const handleRegistrationSubmit = async (e: React.MouseEvent<HTMLButtonElement>) => {
     e.preventDefault();
     setIsSubmitting(true);
     setSubmitError(null);
 
     try {
       // Validate required fields
-      const requiredFields = ['firstName', 'lastName', 'email', 'company', 'businessType'];
+      const requiredFields = ['firstName', 'lastName', 'company', 'businessType'];
       const missingFields = requiredFields.filter(field => !formData[field as keyof FormData]);
       
       if (missingFields.length > 0) {
         throw new Error(`Please fill in all required fields: ${missingFields.join(', ')}`);
       }
 
-      // Insert data into Supabase
-      const { data, error } = await supabase
-        .from('user_assessments')
-        .insert([
-          {
-            first_name: formData.firstName,
-            last_name: formData.lastName,
-            email: formData.email,
-            phone: formData.phone || null,
-            company: formData.company,
-            business_type: formData.businessType,
-            monthly_revenue: formData.monthlyRevenue || null,
-            current_software: formData.currentSoftware || null,
-            bookkeeping_challenges: formData.bookkeepingChallenges || null,
-            urgency_level: formData.urgencyLevel || null,
-            created_at: new Date().toISOString(),
-            status: 'pending'
-          }
-        ])
-        .select();
-
-      if (error) {
-        throw error;
+      if (!user?.id || !user?.primaryEmailAddress?.emailAddress) {
+        throw new Error('User not authenticated or email not available');
       }
 
-      console.log('Data successfully saved:', data);
+      // Save registration data using the RegistrationService
+      const registrationData = {
+        clerk_id: user.id, // Keep clerk_id for reference
+        first_name: formData.firstName,
+        last_name: formData.lastName,
+        email: user.primaryEmailAddress.emailAddress, // Use Clerk's email
+        phone: formData.phone || '',
+        company: formData.company,
+        business_type: formData.businessType,
+        monthly_revenue: formData.monthlyRevenue || '',
+        current_software: formData.currentSoftware || '',
+        bookkeeping_challenges: formData.bookkeepingChallenges || '',
+        urgency_level: formData.urgencyLevel || ''
+      };
+
+      await RegistrationService.saveRegistrationData(registrationData);
       
       // Navigate to QBO Auth page
       navigate('/qbo-auth');
       
     } catch (error) {
-      console.error('Error saving to Supabase:', error);
+      console.error('❌ Error saving registration data:', error);
       setSubmitError(error instanceof Error ? error.message : 'An error occurred while saving your information');
     } finally {
       setIsSubmitting(false);
@@ -136,10 +132,11 @@ const AgentForm: React.FC<AgentFormProps> = ({
                   <input
                     type="email"
                     name="email"
-                    value={formData.email}
+                    value={user?.primaryEmailAddress?.emailAddress || formData.email}
                     onChange={handleInputChange}
                     required
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    disabled
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 bg-gray-100 text-gray-600 cursor-not-allowed"
                   />
                 </div>
                 <div>
@@ -269,7 +266,7 @@ const AgentForm: React.FC<AgentFormProps> = ({
             <div className="pt-6">
               <button
                 type="button"
-                onClick={handleSupabaseSubmit}
+                onClick={handleRegistrationSubmit}
                 disabled={isSubmitting}
                 className="w-full bg-blue-600 text-white py-3 rounded-lg text-lg font-semibold hover:bg-blue-700 transition-colors flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed"
               >

@@ -1,7 +1,9 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useUser } from '@clerk/clerk-react';
 import { Link2Icon, CheckCircledIcon, ExclamationTriangleIcon, ReloadIcon } from '@radix-ui/react-icons';
 import { FormData } from '../App';
+import { RegistrationService, RegistrationData } from '../lib/registrationService';
 
 // QuickBooks OAuth Configuration from environment variables
 const CLIENT_ID = import.meta.env.VITE_QBO_CLIENT_ID;
@@ -39,6 +41,36 @@ const QBOAuth: React.FC<QBOAuthProps> = ({
   authError
 }) => {
   const navigate = useNavigate();
+  const { user } = useUser();
+  const [registrationData, setRegistrationData] = useState<RegistrationData | null>(null);
+  const [isLoadingData, setIsLoadingData] = useState(true);
+
+  // Fetch registration data by email if formData is not complete
+  useEffect(() => {
+    const fetchRegistrationData = async () => {
+      if (!user?.primaryEmailAddress?.emailAddress) {
+        setIsLoadingData(false);
+        return;
+      }
+
+      try {
+        const data = await RegistrationService.getRegistrationData(user.primaryEmailAddress.emailAddress);
+        setRegistrationData(data);
+      } catch (error) {
+        console.error('Error fetching registration data:', error);
+      } finally {
+        setIsLoadingData(false);
+      }
+    };
+
+    fetchRegistrationData();
+  }, [user?.primaryEmailAddress?.emailAddress]);
+
+  // Use registration data from database as fallback for display
+  const displayData = {
+    firstName: formData?.firstName || registrationData?.first_name || 'User',
+    company: formData?.company || registrationData?.company || 'Your Company'
+  };
 
   
 
@@ -65,6 +97,23 @@ const QBOAuth: React.FC<QBOAuthProps> = ({
     navigate('/assessment');
   };
 
+  // Show loading screen while fetching registration data
+  if (isLoadingData) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="bg-white rounded-lg shadow-lg p-8 max-w-md w-full mx-4">
+          <div className="text-center">
+            <ReloadIcon className="w-12 h-12 text-blue-600 mx-auto mb-4 animate-spin" />
+            <h2 className="text-xl font-semibold text-gray-900 mb-2">Loading your profile...</h2>
+            <p className="text-gray-600">
+              Please wait while we retrieve your information.
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="bg-white shadow-sm border-b">
@@ -85,11 +134,11 @@ const QBOAuth: React.FC<QBOAuthProps> = ({
         <div className="bg-white rounded-lg shadow p-8">
           <div className="text-center mb-8">
             <h2 className="text-3xl font-bold text-gray-900 mb-4">
-              Hi {formData.firstName}! Let's Connect Your QuickBooks
+              Hi {displayData.firstName}! Let's Connect Your QuickBooks
             </h2>
             <p className="text-lg text-gray-600">
               We need to securely connect to your QuickBooks Online account to analyze your financial data 
-              and provide accurate assessment results for {formData.company}.
+              and provide accurate assessment results for {displayData.company}.
             </p>
           </div>
 
@@ -138,7 +187,7 @@ const QBOAuth: React.FC<QBOAuthProps> = ({
                 <div className="bg-white rounded-lg p-4 mb-6 text-left">
                   <h4 className="font-semibold text-gray-900 mb-2">Connection Details:</h4>
                   <div className="space-y-1 text-sm text-gray-600">
-                    <p><strong>Company:</strong> {formData.company}</p>
+                    <p><strong>Company:</strong> {displayData.company}</p>
                     <p><strong>Realm ID:</strong> {realmId}</p>
                     <p><strong>Status:</strong> <span className="text-green-600 font-medium">Connected ✓</span></p>
                   </div>
