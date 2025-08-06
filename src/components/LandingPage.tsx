@@ -1,227 +1,504 @@
-import React from 'react';
-import { SignedIn, SignedOut, SignInButton, UserButton } from '@clerk/clerk-react';
-import { BarChartIcon, ClockIcon, PersonIcon, StarIcon, ArrowRightIcon } from '@radix-ui/react-icons';
-import { CurrentView } from '../App'; // Import CurrentView from App.tsx
+import React from "react";
+import { useNavigate } from "react-router-dom";
+import {
+  SignedIn,
+  SignedOut,
+  SignInButton,
+  SignUpButton,
+  UserButton,
+  useUser,
+} from "@clerk/clerk-react";
+import {
+  CheckCircledIcon,
+  BarChartIcon,
+  GearIcon,
+  ClockIcon,
+  ArrowRightIcon,
+  StarIcon,
+} from "@radix-ui/react-icons";
 
-interface LandingPageProps {
-  setCurrentView: (view: CurrentView) => void; // Use CurrentView
-}
+const LandingPage: React.FC = () => {
+  const navigate = useNavigate();
+  const { user } = useUser();
 
-const LandingPage: React.FC<LandingPageProps> = ({ setCurrentView }) => (
-  <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
-    {/* Header */}
-    <header className="bg-white shadow-sm">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex justify-between items-center py-4">
-          <div className="flex items-center">
-            <BarChartIcon className="w-8 h-8 text-blue-600 mr-3" />
-            <h1 className="text-2xl font-bold text-gray-900">FinanceAI</h1>
+  const handleGetStarted = () => {
+    navigate("/form");
+  };
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
+      {/* Header */}
+      <div className="bg-white shadow-sm">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex justify-between items-center py-4">
+            <div className="flex items-center">
+              <h1 className="text-2xl font-bold text-gray-900">
+                BookKeeper Pro
+              </h1>
+            </div>
+            <div className="flex items-center space-x-4">
+              <SignedOut>
+                <SignInButton mode="modal">
+                  <button className="text-gray-600 hover:text-gray-900">
+                    Login
+                  </button>
+                </SignInButton>
+                <SignUpButton mode="modal">
+                  <button className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors">
+                    Sign Up
+                  </button>
+                </SignUpButton>
+              </SignedOut>
+              <SignedIn>
+                <span className="text-gray-600">
+                  Welcome, {user?.username}!
+                </span>
+                <UserButton afterSignOutUrl="/" />
+              </SignedIn>
+            </div>
           </div>
-          
-          <nav className="hidden md:flex items-center space-x-8">
-            <a href="#features" className="text-gray-700 hover:text-blue-600 transition-colors">Features</a>
-            <a href="#how-it-works" className="text-gray-700 hover:text-blue-600 transition-colors">How It Works</a>
-            <a href="#pricing" className="text-gray-700 hover:text-blue-600 transition-colors">Pricing</a>
-            
-            <SignedOut>
-              <SignInButton>
-                <button className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors">
-                  Get Started
-                </button>
-              </SignInButton>
-            </SignedOut>
-            
-            <SignedIn>
-              <UserButton />
-            </SignedIn>
-          </nav>
+        </div>
+      </div>
 
-          {/* Mobile menu */}
-          <div className="md:hidden">
+      {/* Hero Section */}
+      <div className="relative overflow-hidden">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
+          <div className="text-center">
             <SignedOut>
-              <SignInButton>
-                <button className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors">
-                  Get Started
-                </button>
-              </SignInButton>
-            </SignedOut>
-            <SignedIn>
-              <div className="flex items-center space-x-2">
-                <button 
-                  onClick={() => setCurrentView('agent-form')}
-                  className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
-                >
-                  Get Started
-                </button>
-                <UserButton />
+              <h1 className="text-4xl md:text-6xl font-bold text-gray-900 mb-6">
+                Know Your Books'
+                <span className="text-blue-600"> Health Score</span>
+              </h1>
+              <p className="text-xl text-gray-600 mb-8 max-w-3xl mx-auto">
+                Get a comprehensive assessment of your QuickBooks Online data in
+                minutes. Identify issues, fix problems, and ensure your
+                financial records are accurate and reliable.
+              </p>
+              <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
+                <SignUpButton mode="modal">
+                  <button className="bg-blue-600 text-white px-8 py-4 rounded-lg text-lg font-semibold hover:bg-blue-700 transition-colors flex items-center">
+                    Start Free Assessment{" "}
+                    <ArrowRightIcon className="w-5 h-5 ml-2" />
+                  </button>
+                </SignUpButton>
+                <div className="flex items-center space-x-2 text-gray-600">
+                  <CheckCircledIcon className="w-5 h-5 text-green-500" />
+                  <span>Free • 5 minutes • Instant results</span>
+                </div>
               </div>
+              <div className="mt-4">
+                <SignInButton mode="modal">
+                  <button className="text-blue-600 hover:text-blue-800 underline">
+                    Already have an account? Sign in
+                  </button>
+                </SignInButton>
+              </div>
+            </SignedOut>
+
+            <SignedIn>
+              <h1 className="text-4xl md:text-6xl font-bold text-gray-900 mb-6">
+                Welcome,{" "}
+                <span className="text-blue-600">{user?.username}!</span>
+              </h1>
+              <p className="text-xl text-gray-600 mb-8 max-w-3xl mx-auto">
+                Ready to assess your QuickBooks Online data? Let's get started
+                with your financial books health check.
+              </p>
+              <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
+                <button
+                  onClick={handleGetStarted}
+                  className="bg-blue-600 text-white px-8 py-4 rounded-lg text-lg font-semibold hover:bg-blue-700 transition-colors flex items-center"
+                >
+                  Continue to Assessment{" "}
+                  <ArrowRightIcon className="w-5 h-5 ml-2" />
+                </button>
+                
+              </div>
+              <div className="flex items-center justify-center space-x-2 text-gray-600 mt-5">
+                  <CheckCircledIcon className="w-5 h-5 text-green-500" />
+                  <span>Quick • Secure • Comprehensive</span>
+                </div>
             </SignedIn>
           </div>
         </div>
       </div>
-    </header>
 
-    {/* Hero Section */}
-    <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20">
-      <div className="text-center">
-        <h1 className="text-5xl font-bold text-gray-900 mb-6">
-          Get Your <span className="text-blue-600">Financial Books</span> Health Score in Minutes
-        </h1>
-        <p className="text-xl text-gray-600 mb-8 max-w-3xl mx-auto">
-          Our AI-powered assessment analyzes your QuickBooks data across 5 critical pillars to identify issues, 
-          provide actionable insights, and ensure your books are ready for growth.
-        </p>
-        <div className="flex flex-col sm:flex-row gap-4 justify-center">
+      {/* Features Section */}
+      <div className="bg-white py-16">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="text-center mb-12">
+            <h2 className="text-3xl font-bold text-gray-900 mb-4">
+              Why Check Your Books' Health?
+            </h2>
+            <p className="text-lg text-gray-600 max-w-2xl mx-auto">
+              Uncover hidden issues in your financial data before they impact
+              your business decisions.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+            <div className="text-center p-6">
+              <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <BarChartIcon className="w-8 h-8 text-blue-600" />
+              </div>
+              <h3 className="text-xl font-semibold text-gray-900 mb-2">
+                Comprehensive Analysis
+              </h3>
+              <p className="text-gray-600">
+                We analyze 5 key pillars: Bank matching, Money organization,
+                Transaction categorization, Control accounts, and
+                Customer/Vendor balances.
+              </p>
+            </div>
+
+            <div className="text-center p-6">
+              <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <ClockIcon className="w-8 h-8 text-green-600" />
+              </div>
+              <h3 className="text-xl font-semibold text-gray-900 mb-2">
+                Quick & Easy
+              </h3>
+              <p className="text-gray-600">
+                Connect your QuickBooks Online account and get results in
+                minutes. No complex setup or lengthy questionnaires required.
+              </p>
+            </div>
+
+            <div className="text-center p-6">
+              <div className="w-16 h-16 bg-purple-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <GearIcon className="w-8 h-8 text-purple-600" />
+              </div>
+              <h3 className="text-xl font-semibold text-gray-900 mb-2">
+                Actionable Insights
+              </h3>
+              <p className="text-gray-600">
+                Get specific recommendations and step-by-step instructions to
+                fix issues and improve your books' accuracy.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* How It Works - Only show to signed out users */}
+      <SignedOut>
+        <div className="bg-gray-50 py-16">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="text-center mb-12">
+              <h2 className="text-3xl font-bold text-gray-900 mb-4">
+                How It Works
+              </h2>
+              <p className="text-lg text-gray-600">
+                Simple 4-step process to assess your books' health
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+              <div className="relative">
+                <div className="bg-white rounded-lg p-6 shadow-sm">
+                  <div className="w-10 h-10 bg-blue-600 text-white rounded-full flex items-center justify-center font-bold text-lg mb-4">
+                    1
+                  </div>
+                  <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                    Sign Up / Login
+                  </h3>
+                  <p className="text-gray-600">
+                    Create your free account or sign in to access the assessment
+                    portal.
+                  </p>
+                </div>
+              </div>
+
+              <div className="relative">
+                <div className="bg-white rounded-lg p-6 shadow-sm">
+                  <div className="w-10 h-10 bg-blue-600 text-white rounded-full flex items-center justify-center font-bold text-lg mb-4">
+                    2
+                  </div>
+                  <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                    Business Details
+                  </h3>
+                  <p className="text-gray-600">
+                    Share basic information about your company and current
+                    bookkeeping challenges.
+                  </p>
+                </div>
+              </div>
+
+              <div className="relative">
+                <div className="bg-white rounded-lg p-6 shadow-sm">
+                  <div className="w-10 h-10 bg-blue-600 text-white rounded-full flex items-center justify-center font-bold text-lg mb-4">
+                    3
+                  </div>
+                  <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                    Connect QuickBooks
+                  </h3>
+                  <p className="text-gray-600">
+                    Securely connect your QBO account using OAuth 2.0. We only
+                    access data needed for analysis.
+                  </p>
+                </div>
+              </div>
+
+              <div className="relative">
+                <div className="bg-white rounded-lg p-6 shadow-sm">
+                  <div className="w-10 h-10 bg-blue-600 text-white rounded-full flex items-center justify-center font-bold text-lg mb-4">
+                    4
+                  </div>
+                  <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                    Get Results
+                  </h3>
+                  <p className="text-gray-600">
+                    Receive a comprehensive report with your books' health score
+                    and actionable recommendations.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </SignedOut>
+
+      {/* Dashboard Section - Only show to signed in users */}
+      <SignedIn>
+        <div className="bg-gray-50 py-16">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="text-center mb-12">
+              <h2 className="text-3xl font-bold text-gray-900 mb-4">
+                Your Assessment Dashboard
+              </h2>
+              <p className="text-lg text-gray-600">
+                Track your progress and manage your assessments
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              <div className="bg-white rounded-lg p-6 shadow-sm border-l-4 border-blue-500">
+                <h3 className="text-xl font-semibold text-gray-900 mb-2">
+                  New Assessment
+                </h3>
+                <p className="text-gray-600 mb-4">
+                  Start a fresh assessment for your QuickBooks data
+                </p>
+                <button
+                  onClick={handleGetStarted}
+                  className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition-colors"
+                >
+                  Start Assessment
+                </button>
+              </div>
+
+              <div className="bg-white rounded-lg p-6 shadow-sm border-l-4 border-gray-300">
+                <h3 className="text-xl font-semibold text-gray-900 mb-2">
+                  Assessment History
+                </h3>
+                <p className="text-gray-600 mb-4">
+                  View your previous assessments and track improvements
+                </p>
+                <button
+                  className="bg-gray-500 text-white px-4 py-2 rounded cursor-not-allowed"
+                  disabled
+                >
+                  Coming Soon
+                </button>
+              </div>
+
+              <div className="bg-white rounded-lg p-6 shadow-sm border-l-4 border-green-500">
+                <h3 className="text-xl font-semibold text-gray-900 mb-2">
+                  Account Settings
+                </h3>
+                <p className="text-gray-600 mb-4">
+                  Manage your profile and connected accounts
+                </p>
+                <UserButton
+                  afterSignOutUrl="/"
+                  appearance={{
+                    elements: {
+                      userButtonAvatarBox: "w-8 h-8",
+                      userButtonTrigger:
+                        "bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 transition-colors",
+                    },
+                  }}
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+      </SignedIn>
+
+      {/* Social Proof */}
+      <div className="bg-white py-16">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="text-center mb-12">
+            <h2 className="text-3xl font-bold text-gray-900 mb-4">
+              Trusted by Business Owners
+            </h2>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+            <div className="bg-gray-50 rounded-lg p-6">
+              <div className="flex items-center mb-4">
+                {[...Array(5)].map((_, i) => (
+                  <StarIcon
+                    key={i}
+                    className="w-5 h-5 text-yellow-400 fill-current"
+                  />
+                ))}
+              </div>
+              <p className="text-gray-700 mb-4">
+                "Found 3 critical issues I didn't know existed. Fixed them in 2
+                hours and now my reports are finally accurate!"
+              </p>
+              <p className="font-semibold text-gray-900">
+                Sarah M., Retail Business
+              </p>
+            </div>
+
+            <div className="bg-gray-50 rounded-lg p-6">
+              <div className="flex items-center mb-4">
+                {[...Array(5)].map((_, i) => (
+                  <StarIcon
+                    key={i}
+                    className="w-5 h-5 text-yellow-400 fill-current"
+                  />
+                ))}
+              </div>
+              <p className="text-gray-700 mb-4">
+                "Super easy to use. Connected my QBO account and had results in
+                3 minutes. The technical instructions were spot-on."
+              </p>
+              <p className="font-semibold text-gray-900">
+                Mike R., Consulting Firm
+              </p>
+            </div>
+
+            <div className="bg-gray-50 rounded-lg p-6">
+              <div className="flex items-center mb-4">
+                {[...Array(5)].map((_, i) => (
+                  <StarIcon
+                    key={i}
+                    className="w-5 h-5 text-yellow-400 fill-current"
+                  />
+                ))}
+              </div>
+              <p className="text-gray-700 mb-4">
+                "The sign-up process was seamless and the assessment saved me
+                hours of manual checking."
+              </p>
+              <p className="font-semibold text-gray-900">
+                Jennifer K., E-commerce
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Security & Trust */}
+      <div className="bg-blue-50 py-16">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="text-center">
+            {/* <ShieldIcon className="w-16 h-16 text-blue-600 mx-auto mb-6" /> */}
+            <h2 className="text-3xl font-bold text-gray-900 mb-4">
+              Your Data is Safe & Secure
+            </h2>
+            <div className="max-w-3xl mx-auto">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-left">
+                <div className="flex items-start">
+                  <CheckCircledIcon className="w-6 h-6 text-green-500 mr-3 mt-0.5 flex-shrink-0" />
+                  <div>
+                    <h4 className="font-semibold text-gray-900">
+                      Secure Authentication
+                    </h4>
+                    <p className="text-gray-600">
+                      Clerk-powered login with industry-standard security
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-start">
+                  <CheckCircledIcon className="w-6 h-6 text-green-500 mr-3 mt-0.5 flex-shrink-0" />
+                  <div>
+                    <h4 className="font-semibold text-gray-900">
+                      OAuth 2.0 Authentication
+                    </h4>
+                    <p className="text-gray-600">
+                      We never see your QuickBooks login credentials
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-start">
+                  <CheckCircledIcon className="w-6 h-6 text-green-500 mr-3 mt-0.5 flex-shrink-0" />
+                  <div>
+                    <h4 className="font-semibold text-gray-900">
+                      Read-Only Access
+                    </h4>
+                    <p className="text-gray-600">
+                      We only read data, never modify anything
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-start">
+                  <CheckCircledIcon className="w-6 h-6 text-green-500 mr-3 mt-0.5 flex-shrink-0" />
+                  <div>
+                    <h4 className="font-semibold text-gray-900">
+                      Encrypted Connection
+                    </h4>
+                    <p className="text-gray-600">
+                      All data transfer is encrypted with SSL
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* CTA Section */}
+      <div className="bg-blue-600 py-16">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
           <SignedOut>
-            <SignInButton>
-              <button className="bg-blue-600 text-white px-8 py-4 rounded-lg text-lg font-semibold hover:bg-blue-700 transition-colors flex items-center justify-center">
-                Start Free Assessment <ArrowRightIcon className="w-5 h-5 ml-2" />
+            <h2 className="text-3xl font-bold text-white mb-4">
+              Ready to Check Your Books' Health?
+            </h2>
+            <p className="text-xl text-blue-100 mb-8 max-w-2xl mx-auto">
+              Join hundreds of business owners who've discovered and fixed
+              critical issues in their financial records.
+            </p>
+            <SignUpButton mode="modal">
+              <button className="bg-white text-blue-600 px-8 py-4 rounded-lg text-lg font-semibold hover:bg-gray-50 transition-colors flex items-center mx-auto">
+                Start Your Free Assessment{" "}
+                <ArrowRightIcon className="w-5 h-5 ml-2" />
               </button>
-            </SignInButton>
+            </SignUpButton>
           </SignedOut>
+
           <SignedIn>
-            <button 
-              onClick={() => setCurrentView('agent-form')}
-              className="bg-blue-600 text-white px-8 py-4 rounded-lg text-lg font-semibold hover:bg-blue-700 transition-colors flex items-center justify-center"
+            <h2 className="text-3xl font-bold text-white mb-4">
+              Ready for Your Next Assessment?
+            </h2>
+            <p className="text-xl text-blue-100 mb-8 max-w-2xl mx-auto">
+              Continue where you left off or start a new comprehensive books
+              health check.
+            </p>
+            <button
+              onClick={handleGetStarted}
+              className="bg-white text-blue-600 px-8 py-4 rounded-lg text-lg font-semibold hover:bg-gray-50 transition-colors flex items-center mx-auto"
             >
-              Start Free Assessment <ArrowRightIcon className="w-5 h-5 ml-2" />
+              Continue Assessment <ArrowRightIcon className="w-5 h-5 ml-2" />
             </button>
           </SignedIn>
-          <button className="border-2 border-blue-600 text-blue-600 px-8 py-4 rounded-lg text-lg font-semibold hover:bg-blue-50 transition-colors">
-            Watch Demo
-          </button>
         </div>
       </div>
 
-      {/* Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mt-16">
-        <div className="text-center">
-          <div className="text-4xl font-bold text-blue-600 mb-2">5,000+</div>
-          <div className="text-gray-600">Books Analyzed</div>
-        </div>
-        <div className="text-center">
-          <div className="text-4xl font-bold text-blue-600 mb-2">15 min</div>
-          <div className="text-gray-600">Average Assessment Time</div>
-        </div>
-        <div className="text-center">
-          <div className="text-4xl font-bold text-blue-600 mb-2">98%</div>
-          <div className="text-gray-600">Issue Detection Accuracy</div>
-        </div>
-      </div>
-    </section>
-
-    {/* Features Section */}
-    <section id="features" className="bg-white py-20">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="text-center mb-16">
-          <h2 className="text-4xl font-bold text-gray-900 mb-4">Why Choose Our Assessment?</h2>
-          <p className="text-xl text-gray-600">Comprehensive analysis designed for both business owners and bookkeepers</p>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
-          <div className="text-center p-6">
-            <div className="bg-blue-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
-              {/* Removed ShieldIcon as it was commented out */}
-            </div>
-            <h3 className="text-lg font-semibold mb-2">Secure & Private</h3>
-            <p className="text-gray-600">Bank-level security with encrypted data processing</p>
-          </div>
-
-          <div className="text-center p-6">
-            <div className="bg-green-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
-              <ClockIcon className="w-8 h-8 text-green-600" />
-            </div>
-            <h3 className="text-lg font-semibold mb-2">Fast Results</h3>
-            <p className="text-gray-600">Get comprehensive analysis in under 15 minutes</p>
-          </div>
-
-          <div className="text-center p-6">
-            <div className="bg-purple-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
-              <PersonIcon className="w-8 h-8 text-purple-600" />
-            </div>
-            <h3 className="text-lg font-semibold mb-2">Dual Audience</h3>
-            <p className="text-gray-600">Reports for both business owners and bookkeepers</p>
-          </div>
-
-          <div className="text-center p-6">
-            <div className="bg-yellow-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
-              <StarIcon className="w-8 h-8 text-yellow-600" />
-            </div>
-            <h3 className="text-lg font-semibold mb-2">Actionable Insights</h3>
-            <p className="text-gray-600">Step-by-step remediation plans with time estimates</p>
+      {/* Footer */}
+      <div className="bg-gray-900 py-8">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="text-center text-gray-400">
+            <p>&copy; 2024 BookKeeper Pro. All rights reserved.</p>
           </div>
         </div>
       </div>
-    </section>
-
-    {/* How It Works */}
-    <section id="how-it-works" className="bg-gray-50 py-20">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="text-center mb-16">
-          <h2 className="text-4xl font-bold text-gray-900 mb-4">How It Works</h2>
-          <p className="text-xl text-gray-600">Simple 3-step process to assess your financial books</p>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-          <div className="text-center">
-            <div className="bg-blue-600 text-white w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-4 text-xl font-bold">1</div>
-            <h3 className="text-xl font-semibold mb-4">Connect Your Data</h3>
-            <p className="text-gray-600">Link your QuickBooks Online account or upload Excel reports securely</p>
-          </div>
-
-          <div className="text-center">
-            <div className="bg-blue-600 text-white w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-4 text-xl font-bold">2</div>
-            <h3 className="text-xl font-semibold mb-4">AI Analysis</h3>
-            <p className="text-gray-600">Our AI analyzes your data across 5 critical financial pillars</p>
-          </div>
-
-          <div className="text-center">
-            <div className="bg-blue-600 text-white w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-4 text-xl font-bold">3</div>
-            <h3 className="text-xl font-semibold mb-4">Get Results</h3>
-            <p className="text-gray-600">Receive detailed reports with actionable remediation plans</p>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    {/* CTA Section */}
-    <section className="bg-blue-600 py-20">
-      <div className="max-w-4xl mx-auto text-center px-4 sm:px-6 lg:px-8">
-        <h2 className="text-4xl font-bold text-white mb-6">Ready to Improve Your Financial Health?</h2>
-        <p className="text-xl text-blue-100 mb-8">
-          Join thousands of businesses who have optimized their bookkeeping with our AI assessment
-        </p>
-        <SignedOut>
-          <SignInButton>
-            <button className="bg-white text-blue-600 px-8 py-4 rounded-lg text-lg font-semibold hover:bg-gray-50 transition-colors">
-              Start Your Free Assessment Now
-            </button>
-          </SignInButton>
-        </SignedOut>
-        <SignedIn>
-          <button 
-            onClick={() => setCurrentView('agent-form')}
-            className="bg-white text-blue-600 px-8 py-4 rounded-lg text-lg font-semibold hover:bg-gray-50 transition-colors"
-          >
-            Start Your Free Assessment Now
-          </button>
-        </SignedIn>
-      </div>
-    </section>
-
-    {/* Footer */}
-    <footer className="bg-gray-900 text-white py-12">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="text-center">
-          <div className="flex items-center justify-center mb-4">
-            <BarChartIcon className="w-8 h-8 text-blue-400 mr-3" />
-            <span className="text-2xl font-bold">FinanceAI</span>
-          </div>
-          <p className="text-gray-400">© 2025 FinanceAI. All rights reserved.</p>
-        </div>
-      </div>
-    </footer>
-  </div>
-);
+    </div>
+  );
+};
 
 export default LandingPage;
