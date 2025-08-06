@@ -303,11 +303,7 @@ pretty_urls = true
 [build.processing.images]
 compress = true
 
-# Functions Configuration (Future Use)
-# ====================================
-[functions]
-# Directory for Netlify Functions (if needed later)
-directory = "netlify/functions"
+# Functions Configuration removed - not currently used
 
 # Forms Configuration (if contact forms are added)
 # ================================================
@@ -319,10 +315,5 @@ directory = "netlify/functions"
 [context.production]
 environment = { NODE_ENV = "production" }
 
-# Branch deployments disabled per requirements
-[context.branch-deploy]
-command = "echo 'Branch deploys disabled'"
-
-# Deploy previews disabled per requirements
-[context.deploy-preview]
-command = "echo 'Deploy previews disabled'"
+# Enable deploy previews and branch deploys
+# They will use the main build command by default
