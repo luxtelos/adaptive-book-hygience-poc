@@ -54,7 +54,9 @@ const LandingPage: React.FC = () => {
       logger.group("Checking for existing user assessment");
 
       try {
-        const userEmail = user.emailAddresses[0].emailAddress;
+        const userEmail = user.emailAddresses && user.emailAddresses.length > 0
+          ? user.emailAddresses[0].emailAddress
+          : undefined;
         logger.debug("Checking for user email:", userEmail);
 
         const { data, error } = await supabase
