@@ -39,8 +39,9 @@ export const useUserSync = () => {
       try {
         const { error } = await supabase
           .from('users')
-          .upsert([{
-            ...userData
+          .upsert([{ 
+            ...userData, 
+            created_at: new Date().toISOString() 
           }], {
             onConflict: 'clerk_id',
             ignoreDuplicates: false
