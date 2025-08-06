@@ -25,6 +25,8 @@ if (!AUTH_BASE_URL) {
   console.error('VITE_QBO_AUTH_BASE_URL environment variable is required');
 }
 
+//test
+
 interface QBOAuthProps {
   formData: FormData;
   accessToken: string | null;
