@@ -46,7 +46,12 @@ const LandingPage: React.FC = () => {
 
   useEffect(() => {
     const checkExistingAssessment = async () => {
-      if (!isLoaded || !user?.emailAddresses?.[0]?.emailAddress) {
+      if (
+        !isLoaded ||
+        !Array.isArray(user?.emailAddresses) ||
+        user.emailAddresses.length === 0 ||
+        !user.emailAddresses[0]?.emailAddress
+      ) {
         return;
       }
 
