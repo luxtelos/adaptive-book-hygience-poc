@@ -21,9 +21,15 @@ export const useUserSync = () => {
         return;
       }
 
+      const email = user.primaryEmailAddress?.emailAddress;
+      if (!email) {
+        console.warn('User is missing a primary email address. Skipping sync.');
+        return;
+      }
+
       const userData = {
         clerk_id: user.id,
-        email: user.primaryEmailAddress?.emailAddress || '',
+        email: email,
         first_name: user.firstName || '',
         last_name: user.lastName || '',
         profile_image_url: user.imageUrl || '',
