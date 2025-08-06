@@ -1,13 +1,14 @@
-import React, { useEffect } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
-import { ReloadIcon } from '@radix-ui/react-icons';
+import React, { useEffect } from "react";
+import { useNavigate, useLocation } from "react-router-dom";
+import { ReloadIcon } from "@radix-ui/react-icons";
+import logger from "../lib/logger";
 
 // OAuth Configuration from environment variables
 const POST_LOGIN_REDIRECT = import.meta.env.VITE_QBO_POST_LOGIN_REDIRECT;
 
 // Validate required environment variable
 if (!POST_LOGIN_REDIRECT) {
-  console.error('VITE_QBO_POST_LOGIN_REDIRECT environment variable is required');
+  logger.error("VITE_QBO_POST_LOGIN_REDIRECT environment variable is required");
 }
 
 interface OAuthCallbackProps {
@@ -21,34 +22,47 @@ const OAuthCallback: React.FC<OAuthCallbackProps> = ({
   setAccessToken,
   setRefreshToken,
   setRealmId,
-  setError
+  setError,
 }) => {
   const navigate = useNavigate();
   const location = useLocation();
 
   useEffect(() => {
+    logger.group("OAuth Callback Processing");
+
     const params = new URLSearchParams(location.search);
     const qbTokens = params.get("qb_tokens");
     const error = params.get("error");
 
-    console.log("OAuth callback - code received:", qbTokens);
-    console.log("OAuth callback - error received:", error);
+    logger.debug("OAuth callback - code received:", qbTokens);
+    logger.debug("OAuth callback - error received:", error);
 
     if (error) {
-      console.error("OAuth error:", error);
+      logger.error("OAuth error:", error);
       setError(`OAuth error: ${error}`);
-      debugger;
-      console.log("Redirecting to QBO Auth page due to error");
+      logger.debugBreak("OAuth error occurred - check error details above");
+      logger.info("Redirecting to QBO Auth page due to error");
     }
 
     if (qbTokens) {
-      const decodeQbTokens = JSON.parse(decodeURIComponent(qbTokens))
-      console.log("decodeQbTokens", decodeQbTokens)
-      // Clear any previous errors
-      setError(null);
-      setAccessToken(decodeQbTokens.access_token);
-      setRefreshToken(decodeQbTokens.refresh_token || null);
-      navigate("/assessment");
+      try {
+        const decodeQbTokens = JSON.parse(decodeURIComponent(qbTokens));
+        logger.debug("Decoded QB tokens:", decodeQbTokens);
+
+        // Clear any previous errors
+        setError(null);
+        setAccessToken(decodeQbTokens.access_token);
+        setRefreshToken(decodeQbTokens.refresh_token || null);
+
+        logger.info(
+          "Successfully processed OAuth tokens, navigating to assessment",
+        );
+        navigate("/assessment");
+      } catch (parseError) {
+        logger.error("Failed to parse QB tokens:", parseError);
+        setError("Invalid token format received from QuickBooks");
+        navigate("/qbo-auth");
+      }
 
       // fetch(`${POST_LOGIN_REDIRECT}?code=${code}`, {
       //   method: "GET",
@@ -85,10 +99,12 @@ const OAuthCallback: React.FC<OAuthCallbackProps> = ({
       //     navigate('/qbo-auth');
       //   });
     } else {
-      console.error("No code in URL");
+      logger.error("No authorization code received from QuickBooks");
       setError("No authorization code received from QuickBooks");
-      navigate('/qbo-auth');
+      navigate("/qbo-auth");
     }
+
+    logger.groupEnd();
   }, []);
 
   return (
@@ -96,7 +112,9 @@ const OAuthCallback: React.FC<OAuthCallbackProps> = ({
       <div className="bg-white rounded-lg shadow-lg p-8 max-w-md w-full mx-4">
         <div className="text-center">
           <ReloadIcon className="w-12 h-12 text-blue-600 mx-auto mb-4 animate-spin" />
-          <h2 className="text-xl font-semibold text-gray-900 mb-2">Processing Authentication...</h2>
+          <h2 className="text-xl font-semibold text-gray-900 mb-2">
+            Processing Authentication...
+          </h2>
           <p className="text-gray-600">
             Please wait while we complete your QuickBooks connection.
           </p>
