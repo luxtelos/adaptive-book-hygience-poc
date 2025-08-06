@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   SignedIn,
@@ -15,13 +15,92 @@ import {
   ClockIcon,
   ArrowRightIcon,
   StarIcon,
+  ReloadIcon,
 } from "@radix-ui/react-icons";
+import { supabase } from "../lib/supabaseConnect";
+import logger from "../lib/logger";
+
+interface UserAssessment {
+  id: string;
+  first_name: string;
+  last_name: string;
+  email: string;
+  phone?: string;
+  company: string;
+  business_type: string;
+  monthly_revenue?: string;
+  current_software?: string;
+  bookkeeping_challenges?: string;
+  urgency_level?: string;
+  created_at: string;
+  status: string;
+}
 
 const LandingPage: React.FC = () => {
   const navigate = useNavigate();
-  const { user } = useUser();
+  const { user, isLoaded } = useUser();
+  const [isCheckingData, setIsCheckingData] = useState(false);
+  const [userAssessment, setUserAssessment] = useState<UserAssessment | null>(
+    null,
+  );
+
+  useEffect(() => {
+    const checkExistingAssessment = async () => {
+      if (!isLoaded || !user?.emailAddresses?.[0]?.emailAddress) {
+        return;
+      }
+
+      setIsCheckingData(true);
+      logger.group("Checking for existing user assessment");
+
+      try {
+        const userEmail = user.emailAddresses[0].emailAddress;
+        logger.debug("Checking for user email:", userEmail);
+
+        const { data, error } = await supabase
+          .from("user_assessments")
+          .select("*")
+          .eq("email", userEmail)
+          .order("created_at", { ascending: false })
+          .limit(1);
+
+        if (error) {
+          logger.error("Error checking user assessment:", error);
+          return;
+        }
+
+        if (data && data.length > 0) {
+          logger.info("Found existing user assessment:", data[0]);
+          setUserAssessment(data[0]);
+        } else {
+          logger.debug("No existing assessment found for user");
+        }
+      } catch (error) {
+        logger.error("Error in checkExistingAssessment:", error);
+      } finally {
+        setIsCheckingData(false);
+        logger.groupEnd();
+      }
+    };
+
+    checkExistingAssessment();
+  }, [user, isLoaded]);
 
   const handleGetStarted = () => {
+    if (userAssessment) {
+      // User has existing data, skip form and go to QBO Auth
+      logger.info("User has existing data, redirecting to QBO Auth");
+      navigate("/qbo-auth");
+    } else {
+      // User needs to fill the form first
+      logger.info("User needs to fill form first");
+      navigate("/form");
+    }
+  };
+
+  const handleStartNewAssessment = () => {
+    // Force user to go through form again (for new assessment)
+    logger.info("Starting new assessment, redirecting to form");
     navigate("/form");
   };
 
@@ -96,28 +175,79 @@ const LandingPage: React.FC = () => {
             </SignedOut>
 
             <SignedIn>
-              <h1 className="text-4xl md:text-6xl font-bold text-gray-900 mb-6">
-                Welcome,{" "}
-                <span className="text-blue-600">{user?.username}!</span>
-              </h1>
-              <p className="text-xl text-gray-600 mb-8 max-w-3xl mx-auto">
-                Ready to assess your QuickBooks Online data? Let's get started
-                with your financial books health check.
-              </p>
-              <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
-                <button
-                  onClick={handleGetStarted}
-                  className="bg-blue-600 text-white px-8 py-4 rounded-lg text-lg font-semibold hover:bg-blue-700 transition-colors flex items-center"
-                >
-                  Continue to Assessment{" "}
-                  <ArrowRightIcon className="w-5 h-5 ml-2" />
-                </button>
-                
-              </div>
-              <div className="flex items-center justify-center space-x-2 text-gray-600 mt-5">
-                  <CheckCircledIcon className="w-5 h-5 text-green-500" />
-                  <span>Quick • Secure • Comprehensive</span>
+              {isCheckingData ? (
+                // Loading state while checking for existing data
+                <div className="flex flex-col items-center">
+                  <h1 className="text-4xl md:text-6xl font-bold text-gray-900 mb-6">
+                    Welcome back,{" "}
+                    <span className="text-blue-600">{user?.username}!</span>
+                  </h1>
+                  <div className="flex items-center space-x-3 text-gray-600 mb-8">
+                    <ReloadIcon className="w-5 h-5 animate-spin" />
+                    <span className="text-xl">Checking your account...</span>
+                  </div>
                 </div>
+              ) : userAssessment ? (
+                // User has existing assessment data
+                <div>
+                  <h1 className="text-4xl md:text-6xl font-bold text-gray-900 mb-6">
+                    Welcome back,{" "}
+                    <span className="text-blue-600">
+                      {userAssessment.first_name}!
+                    </span>
+                  </h1>
+                  <p className="text-xl text-gray-600 mb-8 max-w-3xl mx-auto">
+                    Great news! We found your business information for{" "}
+                    <strong>{userAssessment.company}</strong>. You can continue
+                    directly to connect your QuickBooks or start a new
+                    assessment.
+                  </p>
+                  <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
+                    <button
+                      onClick={handleGetStarted}
+                      className="bg-blue-600 text-white px-8 py-4 rounded-lg text-lg font-semibold hover:bg-blue-700 transition-colors flex items-center"
+                    >
+                      Continue to QuickBooks{" "}
+                      <ArrowRightIcon className="w-5 h-5 ml-2" />
+                    </button>
+                    <button
+                      onClick={handleStartNewAssessment}
+                      className="bg-gray-200 text-gray-700 px-8 py-4 rounded-lg text-lg font-semibold hover:bg-gray-300 transition-colors"
+                    >
+                      Start New Assessment
+                    </button>
+                  </div>
+                  <div className="flex items-center justify-center space-x-2 text-gray-600 mt-5">
+                    <CheckCircledIcon className="w-5 h-5 text-green-500" />
+                    <span>Secure • Fast • Ready to connect</span>
+                  </div>
+                </div>
+              ) : (
+                // New user - no existing assessment
+                <div>
+                  <h1 className="text-4xl md:text-6xl font-bold text-gray-900 mb-6">
+                    Welcome,{" "}
+                    <span className="text-blue-600">{user?.username}!</span>
+                  </h1>
+                  <p className="text-xl text-gray-600 mb-8 max-w-3xl mx-auto">
+                    Ready to assess your QuickBooks Online data? Let's start by
+                    gathering some basic information about your business.
+                  </p>
+                  <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
+                    <button
+                      onClick={handleGetStarted}
+                      className="bg-blue-600 text-white px-8 py-4 rounded-lg text-lg font-semibold hover:bg-blue-700 transition-colors flex items-center"
+                    >
+                      Start Assessment{" "}
+                      <ArrowRightIcon className="w-5 h-5 ml-2" />
+                    </button>
+                  </div>
+                  <div className="flex items-center justify-center space-x-2 text-gray-600 mt-5">
+                    <CheckCircledIcon className="w-5 h-5 text-green-500" />
+                    <span>Quick • Secure • Comprehensive</span>
+                  </div>
+                </div>
+              )}
             </SignedIn>
           </div>
         </div>
@@ -274,18 +404,37 @@ const LandingPage: React.FC = () => {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               <div className="bg-white rounded-lg p-6 shadow-sm border-l-4 border-blue-500">
                 <h3 className="text-xl font-semibold text-gray-900 mb-2">
-                  New Assessment
+                  {userAssessment ? "Continue Assessment" : "New Assessment"}
                 </h3>
                 <p className="text-gray-600 mb-4">
-                  Start a fresh assessment for your QuickBooks data
+                  {userAssessment
+                    ? "Continue with your QuickBooks connection"
+                    : "Start a fresh assessment for your QuickBooks data"}
                 </p>
                 <button
                   onClick={handleGetStarted}
                   className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition-colors"
                 >
-                  Start Assessment
+                  {userAssessment ? "Continue" : "Start Assessment"}
                 </button>
               </div>
+
+              {userAssessment && (
+                <div className="bg-white rounded-lg p-6 shadow-sm border-l-4 border-orange-500">
+                  <h3 className="text-xl font-semibold text-gray-900 mb-2">
+                    Start New Assessment
+                  </h3>
+                  <p className="text-gray-600 mb-4">
+                    Begin a fresh assessment with updated business information
+                  </p>
+                  <button
+                    onClick={handleStartNewAssessment}
+                    className="bg-orange-600 text-white px-4 py-2 rounded hover:bg-orange-700 transition-colors"
+                  >
+                    New Assessment
+                  </button>
+                </div>
+              )}
 
               <div className="bg-white rounded-lg p-6 shadow-sm border-l-4 border-gray-300">
                 <h3 className="text-xl font-semibold text-gray-900 mb-2">
@@ -396,7 +545,6 @@ const LandingPage: React.FC = () => {
       <div className="bg-blue-50 py-16">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center">
-            {/* <ShieldIcon className="w-16 h-16 text-blue-600 mx-auto mb-6" /> */}
             <h2 className="text-3xl font-bold text-gray-900 mb-4">
               Your Data is Safe & Secure
             </h2>
@@ -473,17 +621,21 @@ const LandingPage: React.FC = () => {
 
           <SignedIn>
             <h2 className="text-3xl font-bold text-white mb-4">
-              Ready for Your Next Assessment?
+              {userAssessment
+                ? "Ready to Connect QuickBooks?"
+                : "Ready for Your Assessment?"}
             </h2>
             <p className="text-xl text-blue-100 mb-8 max-w-2xl mx-auto">
-              Continue where you left off or start a new comprehensive books
-              health check.
+              {userAssessment
+                ? "Continue with your QuickBooks connection to complete your books health check."
+                : "Start your comprehensive books health check and get instant insights."}
             </p>
             <button
               onClick={handleGetStarted}
               className="bg-white text-blue-600 px-8 py-4 rounded-lg text-lg font-semibold hover:bg-gray-50 transition-colors flex items-center mx-auto"
             >
-              Continue Assessment <ArrowRightIcon className="w-5 h-5 ml-2" />
+              {userAssessment ? "Connect QuickBooks" : "Start Assessment"}{" "}
+              <ArrowRightIcon className="w-5 h-5 ml-2" />
             </button>
           </SignedIn>
         </div>
