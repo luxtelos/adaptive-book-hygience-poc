@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import { ClerkProvider, SignedIn, SignedOut, RedirectToSignIn } from '@clerk/clerk-react';
+import { SignedIn, SignedOut } from '@clerk/clerk-react';
 import './App.css';
 import LandingPage from './components/LandingPage';
 import AgentForm from './components/AgentForm';
@@ -11,7 +11,7 @@ import Assessment from './components/Assessment';
 
 // 1. Define types for the state variables.
 export type CurrentView = 'landing' | 'agent-form' | 'qbo-auth' | 'assessment';
-export type CurrentStep = 'upload' | 'analysis' | 'results';
+export type CurrentStep = 'upload' | 'customer-selection' | 'analysis' | 'results';
 export type ViewMode = 'business' | 'technical';
 
 // 2. Define an interface for the `formData` object.
