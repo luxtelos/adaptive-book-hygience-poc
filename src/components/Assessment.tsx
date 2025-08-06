@@ -1,21 +1,25 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { 
-  Link2Icon, 
-  UploadIcon, 
-  CheckCircledIcon, 
-  ExclamationTriangleIcon, 
-  CrossCircledIcon, 
-  EyeOpenIcon, 
-  GearIcon, 
-  CalendarIcon, 
-  BarChartIcon, 
-  DownloadIcon, 
-  PlayIcon, 
-  ReloadIcon 
+import {
+  Link2Icon,
+  UploadIcon,
+  CheckCircledIcon,
+  ExclamationTriangleIcon,
+  CrossCircledIcon,
+  EyeOpenIcon,
+  GearIcon,
+  CalendarIcon,
+  BarChartIcon,
+  DownloadIcon,
+  PlayIcon,
+  ReloadIcon,
+  MagnifyingGlassIcon,
+  PersonIcon,
+  ChevronDownIcon
 } from '@radix-ui/react-icons';
 import { useUser } from '@clerk/clerk-react';
 import { FormData, CurrentStep, ViewMode } from '../App';
+import QBOApiService, { QBOCustomer, DateRange } from '../services/qboApiService';
 
 interface AssessmentProps {
   currentStep: CurrentStep;
@@ -58,17 +62,17 @@ interface AssessmentResults {
   criticalIssues: CriticalIssue[];
 }
 
-const Assessment = ({ 
-  currentStep, 
-  setCurrentStep, 
-  viewMode, 
-  setViewMode, 
-  uploadedFiles, 
-  setUploadedFiles, 
-  isAnalyzing, 
-  setIsAnalyzing, 
-  formData, 
-  handleFileUpload, 
+const Assessment = ({
+  currentStep,
+  setCurrentStep,
+  viewMode,
+  setViewMode,
+  uploadedFiles,
+  setUploadedFiles,
+  isAnalyzing,
+  setIsAnalyzing,
+  formData,
+  handleFileUpload,
   handleAnalysis,
   accessToken,
   realmId
@@ -76,6 +80,21 @@ const Assessment = ({
   const navigate = useNavigate();
   const [isFetchingData, setIsFetchingData] = useState(false);
   const [dataFetchError, setDataFetchError] = useState<string | null>(null);
+  
+  // Customer selection state
+  const [customers, setCustomers] = useState<QBOCustomer[]>([]);
+  const [selectedCustomer, setSelectedCustomer] = useState<QBOCustomer | null>(null);
+  const [isLoadingCustomers, setIsLoadingCustomers] = useState(false);
+  const [customerError, setCustomerError] = useState<string | null>(null);
+  const [customerSearchTerm, setCustomerSearchTerm] = useState('');
+  const [isCustomerDropdownOpen, setIsCustomerDropdownOpen] = useState(false);
+  const [dateRange, setDateRange] = useState<DateRange>({
+    start_date: '2024-01-01',
+    end_date: '2024-12-31'
+  });
+  
+  // Initialize QBO API service
+  const [qboService] = useState(() => new QBOApiService());
   
   const { isLoaded, isSignedIn, user } = useUser();
 
@@ -120,21 +139,49 @@ const Assessment = ({
     "Audit Log"
   ];
 
-  // Auto-fetch data when component loads if we have access token
+  // Auto-fetch customers when component loads if we have access token
   useEffect(() => {
-    if (accessToken && realmId && currentStep === 'upload' && uploadedFiles.length === 0) {
-      handleQBODataFetch();
+    if (accessToken && realmId && currentStep === 'upload' && customers.length === 0) {
+      handleCustomersFetch();
     }
   }, [accessToken, realmId, currentStep]);
 
-  const handleQBODataFetch = async () => {
+  const handleCustomersFetch = async () => {
+    setIsLoadingCustomers(true);
+    setCustomerError(null);
+
+    try {
+      const fetchedCustomers = await qboService.fetchCustomers();
+      setCustomers(fetchedCustomers);
+      setCurrentStep('customer-selection');
+    } catch (error) {
+      console.error('Error fetching customers:', error);
+      setCustomerError('Failed to fetch customers from QuickBooks. Please try manual upload.');
+    } finally {
+      setIsLoadingCustomers(false);
+    }
+  };
+
+  const handleCustomerSelect = (customer: QBOCustomer) => {
+    setSelectedCustomer(customer);
+    setIsCustomerDropdownOpen(false);
+  };
+
+  const handleFetchFinancialData = async () => {
+    if (!selectedCustomer) return;
+
     setIsFetchingData(true);
     setDataFetchError(null);
 
     try {
-      // TODO: Replace with actual API call to fetch QBO data
-      // For now, simulate the data fetching process
-      await new Promise(resolve => setTimeout(resolve, 3000));
+      // Fetch financial data for selected customer
+      await qboService.fetchAllFinancialData(
+        selectedCustomer.Id,
+        dateRange,
+        (progress) => {
+          console.log(`Progress: ${progress.percentage.toFixed(1)}% - ${progress.currentStep}`);
+        }
+      );
       
       // Simulate successful data fetch
       setUploadedFiles(requiredReports);
@@ -147,6 +194,13 @@ const Assessment = ({
       setIsFetchingData(false);
     }
   };
+
+  // Filter customers based on search term
+  const filteredCustomers = customers.filter(customer =>
+    customer.Name.toLowerCase().includes(customerSearchTerm.toLowerCase()) ||
+    customer.DisplayName.toLowerCase().includes(customerSearchTerm.toLowerCase()) ||
+    (customer.CompanyName && customer.CompanyName.toLowerCase().includes(customerSearchTerm.toLowerCase()))
+  );
 
   const getScoreColor = (score: number): string => {
     if (score >= 80) return 'text-green-600';
@@ -211,20 +265,20 @@ const Assessment = ({
           </div>
         </div>
 
-        {/* Upload/Data Fetch Step */}
+        {/* Connect/Data Fetch Step */}
         {currentStep === 'upload' && (
           <div className="space-y-6">
-            {/* QBO Data Fetch Status */}
+            {/* QBO Customer Fetch Status */}
             <div className="bg-white rounded-lg shadow p-6">
               <h2 className="text-xl font-semibold mb-4 flex items-center">
                 <Link2Icon className="w-5 h-5 mr-2" />
-                Fetching Data from QuickBooks Online
+                Connecting to QuickBooks Online
               </h2>
               
-              {isFetchingData && (
+              {isLoadingCustomers && (
                 <div className="flex flex-col items-center py-8">
                   <ReloadIcon className="w-12 h-12 text-blue-600 animate-spin mb-4" />
-                  <p className="text-lg font-medium text-gray-900">Fetching Financial Reports...</p>
+                  <p className="text-lg font-medium text-gray-900">Fetching Customer List...</p>
                   <p className="text-sm text-gray-600 mt-2">
                     Connected to: {formData.company} (Realm ID: {realmId})
                   </p>
@@ -236,38 +290,38 @@ const Assessment = ({
                 </div>
               )}
 
-              {!isFetchingData && uploadedFiles.length === 0 && !dataFetchError && (
-                <button 
-                  onClick={handleQBODataFetch}
+              {!isLoadingCustomers && customers.length === 0 && !customerError && (
+                <button
+                  onClick={handleCustomersFetch}
                   className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition-colors flex items-center"
                 >
                   <Link2Icon className="w-5 h-5 mr-2" />
-                  Fetch Data from QuickBooks
+                  Connect to QuickBooks
                 </button>
               )}
 
-              {uploadedFiles.length > 0 && (
+              {customers.length > 0 && (
                 <div className="flex flex-col items-center py-4">
                   <CheckCircledIcon className="w-12 h-12 text-green-600 mb-4" />
-                  <p className="text-lg font-medium text-gray-900">Data Successfully Fetched!</p>
+                  <p className="text-lg font-medium text-gray-900">Successfully Connected!</p>
                   <p className="text-sm text-gray-600 mt-2">
-                    Retrieved {uploadedFiles.length} reports from QuickBooks Online
+                    Found {customers.length} customers in QuickBooks Online
                   </p>
                 </div>
               )}
 
-              {dataFetchError && (
+              {customerError && (
                 <div className="bg-red-50 border border-red-200 rounded-lg p-4">
                   <div className="flex items-start">
                     <CrossCircledIcon className="w-5 h-5 text-red-500 mr-3 mt-0.5" />
                     <div>
-                      <p className="text-red-800 font-medium">Data Fetch Failed</p>
-                      <p className="text-red-700 text-sm mt-1">{dataFetchError}</p>
-                      <button 
-                        onClick={handleQBODataFetch}
+                      <p className="text-red-800 font-medium">Connection Failed</p>
+                      <p className="text-red-700 text-sm mt-1">{customerError}</p>
+                      <button
+                        onClick={handleCustomersFetch}
                         className="mt-3 bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700 transition-colors text-sm"
                       >
-                        Retry Fetch
+                        Retry Connection
                       </button>
                     </div>
                   </div>
@@ -354,18 +408,228 @@ const Assessment = ({
               </div>
             )}
 
-            {/* Auto-proceed when data is fetched */}
-            {uploadedFiles.length > 0 && !isFetchingData && (
+            {/* Auto-proceed when customers are fetched */}
+            {customers.length > 0 && !isLoadingCustomers && (
               <div className="bg-white rounded-lg shadow p-6 text-center">
-                <p className="text-gray-600 mb-4">All required data has been fetched successfully!</p>
-                <button 
-                  onClick={() => setCurrentStep('analysis')}
+                <p className="text-gray-600 mb-4">Customer list fetched successfully!</p>
+                <button
+                  onClick={() => setCurrentStep('customer-selection')}
                   className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition-colors"
                 >
-                  Continue to Analysis
+                  Continue to Customer Selection
                 </button>
               </div>
             )}
+          </div>
+        )}
+
+        {/* Customer Selection Step */}
+        {currentStep === 'customer-selection' && (
+          <div className="space-y-6">
+            <div className="bg-white rounded-lg shadow p-6">
+              <h2 className="text-xl font-semibold mb-4 flex items-center">
+                <PersonIcon className="w-5 h-5 mr-2" />
+                Select Customer for Analysis
+              </h2>
+              <p className="text-gray-600 mb-6">
+                Choose the customer whose financial data you want to analyze. This will filter reports to show data specific to this customer.
+              </p>
+
+              {/* Customer Selection */}
+              <div className="space-y-6">
+                {/* Search and Dropdown */}
+                <div className="relative">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Customer Search
+                  </label>
+                  <div className="relative">
+                    <div className="flex items-center border-2 border-gray-300 rounded-lg focus-within:border-blue-500">
+                      <MagnifyingGlassIcon className="w-5 h-5 text-gray-400 ml-3" />
+                      <input
+                        type="text"
+                        placeholder="Search customers..."
+                        value={customerSearchTerm}
+                        onChange={(e) => setCustomerSearchTerm(e.target.value)}
+                        onFocus={() => setIsCustomerDropdownOpen(true)}
+                        className="w-full px-3 py-3 border-none focus:outline-none"
+                      />
+                      <button
+                        onClick={() => setIsCustomerDropdownOpen(!isCustomerDropdownOpen)}
+                        className="px-3 py-3 text-gray-400 hover:text-gray-600"
+                      >
+                        <ChevronDownIcon className="w-5 h-5" />
+                      </button>
+                    </div>
+                    
+                    {/* Dropdown */}
+                    {isCustomerDropdownOpen && (
+                      <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                        {filteredCustomers.length > 0 ? (
+                          filteredCustomers.map((customer) => (
+                            <button
+                              key={customer.Id}
+                              onClick={() => handleCustomerSelect(customer)}
+                              className="w-full px-4 py-3 text-left hover:bg-gray-50 border-b border-gray-100 last:border-b-0"
+                            >
+                              <div className="flex items-center justify-between">
+                                <div>
+                                  <p className="font-medium text-gray-900">{customer.DisplayName}</p>
+                                  {customer.CompanyName && (
+                                    <p className="text-sm text-gray-600">{customer.CompanyName}</p>
+                                  )}
+                                  {customer.PrimaryEmailAddr && (
+                                    <p className="text-xs text-gray-500">{customer.PrimaryEmailAddr.Address}</p>
+                                  )}
+                                </div>
+                                <div className="text-right">
+                                  <p className="text-sm font-medium text-gray-900">
+                                    ${customer.Balance.toFixed(2)}
+                                  </p>
+                                  <p className="text-xs text-gray-500">Balance</p>
+                                </div>
+                              </div>
+                            </button>
+                          ))
+                        ) : (
+                          <div className="px-4 py-3 text-gray-500 text-center">
+                            No customers found
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Selected Customer Preview */}
+                {selectedCustomer && (
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                    <h3 className="text-lg font-semibold text-blue-900 mb-2">Selected Customer</h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <p className="font-medium text-gray-900">{selectedCustomer.DisplayName}</p>
+                        {selectedCustomer.CompanyName && (
+                          <p className="text-gray-600">{selectedCustomer.CompanyName}</p>
+                        )}
+                        {selectedCustomer.PrimaryEmailAddr && (
+                          <p className="text-sm text-gray-600">{selectedCustomer.PrimaryEmailAddr.Address}</p>
+                        )}
+                        {selectedCustomer.PrimaryPhone && (
+                          <p className="text-sm text-gray-600">{selectedCustomer.PrimaryPhone.FreeFormNumber}</p>
+                        )}
+                      </div>
+                      <div>
+                        <p className="text-sm text-gray-600">Current Balance</p>
+                        <p className="text-lg font-semibold text-gray-900">${selectedCustomer.Balance.toFixed(2)}</p>
+                        <p className="text-sm text-gray-600">Total with Jobs: ${selectedCustomer.BalanceWithJobs.toFixed(2)}</p>
+                        <p className="text-xs text-gray-500">Last Updated: {new Date(selectedCustomer.MetaData.LastUpdatedTime).toLocaleDateString()}</p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Date Range Selection */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Start Date</label>
+                    <div className="flex items-center border rounded-lg px-3 py-2">
+                      <CalendarIcon className="w-4 h-4 mr-2 text-gray-400" />
+                      <input
+                        type="date"
+                        value={dateRange.start_date}
+                        onChange={(e) => setDateRange(prev => ({ ...prev, start_date: e.target.value }))}
+                        className="w-full border-none focus:outline-none"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">End Date</label>
+                    <div className="flex items-center border rounded-lg px-3 py-2">
+                      <CalendarIcon className="w-4 h-4 mr-2 text-gray-400" />
+                      <input
+                        type="date"
+                        value={dateRange.end_date}
+                        onChange={(e) => setDateRange(prev => ({ ...prev, end_date: e.target.value }))}
+                        className="w-full border-none focus:outline-none"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Action Buttons */}
+                <div className="flex justify-between items-center pt-4">
+                  <button
+                    onClick={() => setCurrentStep('upload')}
+                    className="px-4 py-2 text-gray-600 hover:text-gray-800 font-medium"
+                  >
+                    ← Back to Connection
+                  </button>
+                  
+                  <div className="space-x-4">
+                    <button
+                      onClick={() => {
+                        setSelectedCustomer(null);
+                        setCurrentStep('analysis');
+                      }}
+                      className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+                    >
+                      Skip (All Customers)
+                    </button>
+                    <button
+                      onClick={handleFetchFinancialData}
+                      disabled={!selectedCustomer || isFetchingData}
+                      className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors flex items-center"
+                    >
+                      {isFetchingData ? (
+                        <>
+                          <ReloadIcon className="w-4 h-4 mr-2 animate-spin" />
+                          Fetching Data...
+                        </>
+                      ) : (
+                        <>
+                          <BarChartIcon className="w-4 h-4 mr-2" />
+                          Fetch Financial Data
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Data Fetch Progress */}
+                {isFetchingData && (
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                    <div className="flex items-center mb-2">
+                      <ReloadIcon className="w-5 h-5 text-blue-600 animate-spin mr-2" />
+                      <span className="font-medium text-blue-900">Fetching Financial Data...</span>
+                    </div>
+                    <p className="text-sm text-blue-700 mb-3">
+                      Retrieving comprehensive financial reports for {selectedCustomer?.DisplayName}
+                    </p>
+                    <div className="w-full bg-blue-200 rounded-full h-2">
+                      <div className="bg-blue-600 h-2 rounded-full animate-pulse" style={{width: '60%'}}></div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Data Fetch Error */}
+                {dataFetchError && (
+                  <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                    <div className="flex items-start">
+                      <CrossCircledIcon className="w-5 h-5 text-red-500 mr-3 mt-0.5" />
+                      <div>
+                        <p className="text-red-800 font-medium">Data Fetch Failed</p>
+                        <p className="text-red-700 text-sm mt-1">{dataFetchError}</p>
+                        <button
+                          onClick={handleFetchFinancialData}
+                          className="mt-3 bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700 transition-colors text-sm"
+                        >
+                          Retry Fetch
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
         )}
 

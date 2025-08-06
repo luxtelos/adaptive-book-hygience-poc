@@ -2,8 +2,13 @@ import React, { useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { ReloadIcon } from '@radix-ui/react-icons';
 
-// const POST_LOGIN_REDIRECT = "https://n8n-1-102-1-c1zi.onrender.com/webhook-test/115c6828-fb49-4a60-aa8d-e6eb5346f24d";
-const POST_LOGIN_REDIRECT = "https://n8n-1-102-1-c1zi.onrender.com/webhook/115c6828-fb49-4a60-aa8d-e6eb5346f24d"
+// OAuth Configuration from environment variables
+const POST_LOGIN_REDIRECT = import.meta.env.VITE_QBO_POST_LOGIN_REDIRECT;
+
+// Validate required environment variable
+if (!POST_LOGIN_REDIRECT) {
+  console.error('VITE_QBO_POST_LOGIN_REDIRECT environment variable is required');
+}
 
 interface OAuthCallbackProps {
   setAccessToken: (token: string | null) => void;
