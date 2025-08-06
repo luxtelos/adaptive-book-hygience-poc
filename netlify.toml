@@ -2,35 +2,99 @@
 # =========================================================
 
 [build]
-  # Build command - runs TypeScript compilation and Vite build
-    command = "npm run build"
-    
-    # Directory to publish (Vite outputs to 'dist' by default)
-    publish = "dist"
-    
-    # Enable form detection and ignore admin directory
-    ignore = "/admin/"
-    
-    # Node.js version for build environment
-    [build.environment]
-      NODE_VERSION = "18"
-      NPM_VERSION = "9"
-      # Enable build optimizations
-      GENERATE_SOURCEMAP = "false"
-      VITE_BUILD_ANALYZE = "false"
+  # Build command - install dependencies and build
+  command = "npm ci && npm run build"
+  
+  # Directory to publish (Vite outputs to 'dist' by default)
+  publish = "dist"
+  
+  # Enable form detection and ignore admin directory
+  ignore = "/admin/"
+  
+  # Node.js version for build environment
+  [build.environment]
+    NODE_VERSION = "18"
+    NPM_VERSION = "9"
+    # Build optimizations
+    GENERATE_SOURCEMAP = "false"
+    VITE_BUILD_ANALYZE = "false"
+    NODE_ENV = "production"
+    # Ensure environment variables are available during build
+    NPM_CONFIG_PRODUCTION = "false"
 
-# SPA Routing Configuration
-# =========================
-# Redirect all routes to index.html for client-side routing (React Router)
+# Static Asset Handling (MUST come before SPA routing)
+# ====================================================
+# Prevent static assets from being caught by SPA routing
+# These rules ensure assets are served directly with proper MIME types
+
+# Serve static assets directly - no redirects for these paths
 [[redirects]]
-  from = "/*"
+  from = "/assets/*"
+  to = "/assets/:splat"
+  status = 200
+  force = false
+
+[[redirects]]
+  from = "/*.js"
+  to = "/:splat.js"
+  status = 200
+  force = false
+
+[[redirects]]
+  from = "/*.css"
+  to = "/:splat.css"
+  status = 200
+  force = false
+
+[[redirects]]
+  from = "/*.woff2"
+  to = "/:splat.woff2"
+  status = 200
+  force = false
+
+[[redirects]]
+  from = "/*.ico"
+  to = "/:splat.ico"
+  status = 200
+  force = false
+
+[[redirects]]
+  from = "/*.png"
+  to = "/:splat.png"
+  status = 200
+  force = false
+
+[[redirects]]
+  from = "/*.jpg"
+  to = "/:splat.jpg"
+  status = 200
+  force = false
+
+[[redirects]]
+  from = "/*.svg"
+  to = "/:splat.svg"
+  status = 200
+  force = false
+
+[[redirects]]
+  from = "/*.json"
+  to = "/:splat.json"
+  status = 200
+  force = false
+
+# SPA Routing Configuration (MUST come after static asset rules)
+# ==============================================================
+# OAuth Callback specific handling
+[[redirects]]
+  from = "/oauth-callback"
   to = "/index.html"
   status = 200
   force = false
-  
-# OAuth Callback specific handling (if needed for debugging)
+
+# Catch-all redirect for client-side routing (React Router)
+# This MUST be the LAST redirect rule
 [[redirects]]
-  from = "/oauth-callback"
+  from = "/*"
   to = "/index.html"
   status = 200
   force = false
@@ -55,8 +119,8 @@
     # Permissions policy for enhanced security
     Permissions-Policy = "camera=(), microphone=(), geolocation=()"
 
-# Static Asset Optimization
-# =========================
+# Static Asset Optimization & MIME Type Safety
+# =============================================
 [[headers]]
   for = "/static/*"
   [headers.values]
@@ -64,21 +128,114 @@
     Cache-Control = "public, max-age=31536000, immutable"
 
 [[headers]]
+  for = "/assets/*"
+  [headers.values]
+    # Cache Vite assets for 1 year
+    Cache-Control = "public, max-age=31536000, immutable"
+
+[[headers]]
   for = "*.js"
   [headers.values]
+    # Explicit MIME type for JavaScript files
+    Content-Type = "application/javascript; charset=utf-8"
     # Cache JavaScript files
+    Cache-Control = "public, max-age=31536000, immutable"
+
+[[headers]]
+  for = "*.mjs"
+  [headers.values]
+    # Explicit MIME type for ES modules
+    Content-Type = "application/javascript; charset=utf-8"
     Cache-Control = "public, max-age=31536000, immutable"
 
 [[headers]]
   for = "*.css"
   [headers.values]
+    # Explicit MIME type for CSS files
+    Content-Type = "text/css; charset=utf-8"
     # Cache CSS files
     Cache-Control = "public, max-age=31536000, immutable"
 
 [[headers]]
   for = "*.woff2"
   [headers.values]
+    # Explicit MIME type for font files
+    Content-Type = "font/woff2"
     # Cache font files
+    Cache-Control = "public, max-age=31536000, immutable"
+
+[[headers]]
+  for = "*.woff"
+  [headers.values]
+    Content-Type = "font/woff"
+    Cache-Control = "public, max-age=31536000, immutable"
+
+[[headers]]
+  for = "*.ttf"
+  [headers.values]
+    Content-Type = "font/ttf"
+    Cache-Control = "public, max-age=31536000, immutable"
+
+[[headers]]
+  for = "*.ico"
+  [headers.values]
+    Content-Type = "image/x-icon"
+    Cache-Control = "public, max-age=31536000, immutable"
+
+[[headers]]
+  for = "*.png"
+  [headers.values]
+    Content-Type = "image/png"
+    Cache-Control = "public, max-age=31536000, immutable"
+
+[[headers]]
+  for = "*.jpg"
+  [headers.values]
+    Content-Type = "image/jpeg"
+    Cache-Control = "public, max-age=31536000, immutable"
+
+[[headers]]
+  for = "*.jpeg"
+  [headers.values]
+    Content-Type = "image/jpeg"
+    Cache-Control = "public, max-age=31536000, immutable"
+
+[[headers]]
+  for = "*.svg"
+  [headers.values]
+    Content-Type = "image/svg+xml"
+    Cache-Control = "public, max-age=31536000, immutable"
+
+[[headers]]
+  for = "*.json"
+  [headers.values]
+    Content-Type = "application/json; charset=utf-8"
+    Cache-Control = "public, max-age=31536000, immutable"
+
+[[headers]]
+  for = "*.map"
+  [headers.values]
+    Content-Type = "application/json; charset=utf-8"
+    Cache-Control = "public, max-age=31536000, immutable"
+
+# TypeScript source files (fallback safety - should not be served in production)
+[[headers]]
+  for = "*.ts"
+  [headers.values]
+    Content-Type = "application/javascript; charset=utf-8"
+    Cache-Control = "no-cache, no-store, must-revalidate"
+
+[[headers]]
+  for = "*.tsx"
+  [headers.values]
+    Content-Type = "application/javascript; charset=utf-8"
+    Cache-Control = "no-cache, no-store, must-revalidate"
+
+# ES Module files
+[[headers]]
+  for = "*.esm.js"
+  [headers.values]
+    Content-Type = "application/javascript; charset=utf-8"
     Cache-Control = "public, max-age=31536000, immutable"
 
 # HTML files - shorter cache for SPA updates
