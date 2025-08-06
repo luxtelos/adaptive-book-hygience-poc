@@ -1,0 +1,157 @@
+# Netlify Configuration for Adaptive Book Hygiene React App
+# =========================================================
+
+[build]
+  # Build command - runs TypeScript compilation and Vite build
+    command = "npm run build"
+    
+    # Directory to publish (Vite outputs to 'dist' by default)
+    publish = "dist"
+    
+    # Enable form detection and ignore admin directory
+    ignore = "/admin/"
+    
+    # Node.js version for build environment
+    [build.environment]
+      NODE_VERSION = "18"
+      NPM_VERSION = "9"
+      # Enable build optimizations
+      GENERATE_SOURCEMAP = "false"
+      VITE_BUILD_ANALYZE = "false"
+
+# SPA Routing Configuration
+# =========================
+# Redirect all routes to index.html for client-side routing (React Router)
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+  force = false
+  
+# OAuth Callback specific handling (if needed for debugging)
+[[redirects]]
+  from = "/oauth-callback"
+  to = "/index.html"
+  status = 200
+  force = false
+
+# Security Headers
+# ================
+[[headers]]
+  for = "/*"
+  [headers.values]
+    # Prevent clickjacking attacks
+    X-Frame-Options = "DENY"
+    
+    # Prevent MIME type sniffing
+    X-Content-Type-Options = "nosniff"
+    
+    # Enable XSS protection
+    X-XSS-Protection = "1; mode=block"
+    
+    # Control referrer information
+    Referrer-Policy = "strict-origin-when-cross-origin"
+    
+    # Permissions policy for enhanced security
+    Permissions-Policy = "camera=(), microphone=(), geolocation=()"
+
+# Static Asset Optimization
+# =========================
+[[headers]]
+  for = "/static/*"
+  [headers.values]
+    # Cache static assets for 1 year
+    Cache-Control = "public, max-age=31536000, immutable"
+
+[[headers]]
+  for = "*.js"
+  [headers.values]
+    # Cache JavaScript files
+    Cache-Control = "public, max-age=31536000, immutable"
+
+[[headers]]
+  for = "*.css"
+  [headers.values]
+    # Cache CSS files
+    Cache-Control = "public, max-age=31536000, immutable"
+
+[[headers]]
+  for = "*.woff2"
+  [headers.values]
+    # Cache font files
+    Cache-Control = "public, max-age=31536000, immutable"
+
+# HTML files - shorter cache for SPA updates
+[[headers]]
+  for = "*.html"
+  [headers.values]
+    Cache-Control = "public, max-age=0, must-revalidate"
+
+# API Integration Security
+# ========================
+# Allow connections to required external services
+[[headers]]
+  for = "/*"
+  [headers.values]
+    # Content Security Policy for QBO, Clerk, and Supabase integration
+    Content-Security-Policy = """
+      default-src 'self';
+      script-src 'self' 'unsafe-inline' 'unsafe-eval' https://js.clerk.com https://clerk.com https://*.clerk.accounts.dev;
+      style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
+      font-src 'self' https://fonts.gstatic.com;
+      img-src 'self' data: https: blob:;
+      connect-src 'self' 
+        https://api.clerk.com 
+        https://*.clerk.accounts.dev 
+        https://lwdjpwkrvafwrlizcroj.supabase.co 
+        https://n8n-1-102-1-c1zi.onrender.com 
+        https://appcenter.intuit.com;
+      frame-src 'self' https://*.clerk.accounts.dev https://js.clerk.com;
+      object-src 'none';
+      base-uri 'self';
+      form-action 'self';
+    """
+
+# Build Processing Optimization
+# =============================
+[build.processing]
+  skip_processing = false
+  
+[build.processing.css]
+  bundle = true
+  minify = true
+  
+[build.processing.js]
+  bundle = true
+  minify = true
+
+[build.processing.html]
+  pretty_urls = true
+
+[build.processing.images]
+  compress = true
+
+
+# Functions Configuration (Future Use)
+# ====================================
+[functions]
+  # Directory for Netlify Functions (if needed later)
+  directory = "netlify/functions"
+  
+# Forms Configuration (if contact forms are added)
+# ================================================
+# Form detection is configured in the main [build] section above
+  
+# Branch Deploy Configuration
+# ===========================
+# Production deployment from main branch only
+[context.production]
+  environment = { NODE_ENV = "production" }
+  
+# Branch deployments disabled per requirements
+[context.branch-deploy]
+  command = "echo 'Branch deploys disabled'"
+  
+# Deploy previews disabled per requirements  
+[context.deploy-preview]
+  command = "echo 'Deploy previews disabled'"

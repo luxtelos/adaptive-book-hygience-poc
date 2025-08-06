@@ -3,11 +3,25 @@ import { useNavigate } from 'react-router-dom';
 import { Link2Icon, CheckCircledIcon, ExclamationTriangleIcon, ReloadIcon } from '@radix-ui/react-icons';
 import { FormData } from '../App';
 
-// QuickBooks OAuth Configuration
-const CLIENT_ID = "ABEnKNphNihkXsIe0jRb5EbxBgcEZ0MOrlsNobcRFMfDVJWmgX";
-const REDIRECT_URI = "https://n8n-1-102-1-c1zi.onrender.com/webhook/115c6828-fb49-4a60-aa8d-e6eb5346f24d";
-// const REDIRECT_URI = `${window.location.origin}/oauth-callback`;
-const SCOPE = "com.intuit.quickbooks.accounting";
+// QuickBooks OAuth Configuration from environment variables
+const CLIENT_ID = import.meta.env.VITE_QBO_CLIENT_ID;
+const REDIRECT_URI = import.meta.env.VITE_QBO_REDIRECT_URI;
+const SCOPE = import.meta.env.VITE_QBO_SCOPE;
+const AUTH_BASE_URL = import.meta.env.VITE_QBO_AUTH_BASE_URL;
+
+// Validate required environment variables
+if (!CLIENT_ID) {
+  console.error('VITE_QBO_CLIENT_ID environment variable is required');
+}
+if (!REDIRECT_URI) {
+  console.error('VITE_QBO_REDIRECT_URI environment variable is required');
+}
+if (!SCOPE) {
+  console.error('VITE_QBO_SCOPE environment variable is required');
+}
+if (!AUTH_BASE_URL) {
+  console.error('VITE_QBO_AUTH_BASE_URL environment variable is required');
+}
 
 interface QBOAuthProps {
   formData: FormData;
@@ -41,7 +55,7 @@ const QBOAuth: React.FC<QBOAuthProps> = ({
 
   const loginWithQuickBooks = () => {
     const state = "xyz123"; // Optional
-    const authUrl = `https://appcenter.intuit.com/connect/oauth2?client_id=${CLIENT_ID}&redirect_uri=${encodeURIComponent(
+    const authUrl = `${AUTH_BASE_URL}?client_id=${CLIENT_ID}&redirect_uri=${encodeURIComponent(
       REDIRECT_URI
     )}&response_type=code&scope=${encodeURIComponent(SCOPE)}&state=${state}`;
     window.location.href = authUrl;
