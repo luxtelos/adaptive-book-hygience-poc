@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React from "react";
 import { useNavigate } from "react-router-dom";
 import {
   SignedIn,
@@ -17,81 +17,13 @@ import {
   StarIcon,
   ReloadIcon,
 } from "@radix-ui/react-icons";
-import { supabase } from "../lib/supabaseConnect";
+import { useUserAssessment } from "../hooks/useUserAssessment";
 import logger from "../lib/logger";
-
-interface UserAssessment {
-  id: string;
-  first_name: string;
-  last_name: string;
-  email: string;
-  phone?: string;
-  company: string;
-  business_type: string;
-  monthly_revenue?: string;
-  current_software?: string;
-  bookkeeping_challenges?: string;
-  urgency_level?: string;
-  created_at: string;
-  status: string;
-}
 
 const LandingPage: React.FC = () => {
   const navigate = useNavigate();
   const { user, isLoaded } = useUser();
-  const [isCheckingData, setIsCheckingData] = useState(false);
-  const [userAssessment, setUserAssessment] = useState<UserAssessment | null>(
-    null,
-  );
-
-  useEffect(() => {
-    const checkExistingAssessment = async () => {
-      if (
-        !isLoaded ||
-        !Array.isArray(user?.emailAddresses) ||
-        user.emailAddresses.length === 0 ||
-        !user.emailAddresses[0]?.emailAddress
-      ) {
-        return;
-      }
-
-      setIsCheckingData(true);
-      logger.group("Checking for existing user assessment");
-
-      try {
-        const userEmail = user.emailAddresses && user.emailAddresses.length > 0
-          ? user.emailAddresses[0].emailAddress
-          : undefined;
-        logger.debug("Checking for user email:", userEmail);
-
-        const { data, error } = await supabase
-          .from("user_assessments")
-          .select("*")
-          .eq("email", userEmail)
-          .order("created_at", { ascending: false })
-          .limit(1);
-
-        if (error) {
-          logger.error("Error checking user assessment:", error);
-          return;
-        }
-
-        if (data && data.length > 0) {
-          logger.info("Found existing user assessment:", data[0]);
-          setUserAssessment(data[0]);
-        } else {
-          logger.debug("No existing assessment found for user");
-        }
-      } catch (error) {
-        logger.error("Error in checkExistingAssessment:", error);
-      } finally {
-        setIsCheckingData(false);
-        logger.groupEnd();
-      }
-    };
-
-    checkExistingAssessment();
-  }, [user, isLoaded]);
+  const { userAssessment, isCheckingData } = useUserAssessment();
 
   const handleGetStarted = () => {
     const hasAssessment = !!userAssessment;
@@ -185,7 +117,7 @@ const LandingPage: React.FC = () => {
                 <div className="flex flex-col items-center">
                   <h1 className="text-4xl md:text-6xl font-bold text-gray-900 mb-6">
                     Welcome back,{" "}
-                    <span className="text-blue-600">{user?.username}!</span>
+                    <span className="text-blue-600">{user?.username || user?.firstName || 'there'}!</span>
                   </h1>
                   <div className="flex items-center space-x-3 text-gray-600 mb-8">
                     <ReloadIcon className="w-5 h-5 animate-spin" />
@@ -232,7 +164,7 @@ const LandingPage: React.FC = () => {
                 <div>
                   <h1 className="text-4xl md:text-6xl font-bold text-gray-900 mb-6">
                     Welcome,{" "}
-                    <span className="text-blue-600">{user?.username}!</span>
+                    <span className="text-blue-600">{user?.username || user?.firstName || 'there'}!</span>
                   </h1>
                   <p className="text-xl text-gray-600 mb-8 max-w-3xl mx-auto">
                     Ready to assess your QuickBooks Online data? Let's start by
