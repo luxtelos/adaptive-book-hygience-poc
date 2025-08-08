@@ -1,11 +1,11 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   BrowserRouter as Router,
   Routes,
   Route,
   Navigate,
 } from "react-router-dom";
-import { SignedIn, SignedOut } from "@clerk/clerk-react";
+import { SignedIn, SignedOut, useUser } from "@clerk/clerk-react";
 import "./App.css";
 import LandingPage from "./components/LandingPage";
 import AgentForm from "./components/AgentForm";
@@ -13,7 +13,9 @@ import QBOAuth from "./components/QBOAuth";
 import OAuthCallback from "./components/OAuthCallBack"; // Fixed typo
 import Assessment from "./components/Assessment";
 import { QBOServiceProvider } from "./services/QBOServiceContext";
-
+import { QBOTokenService } from "./services/qboTokenService";
+import { useLogoutCleanup } from "./hooks/useLogoutCleanup";
+import logger from "./lib/logger";
 
 // 1. Define types for the state variables.
 export type CurrentView = "landing" | "agent-form" | "qbo-auth" | "assessment";
@@ -51,15 +53,22 @@ const ProtectedRoute: React.FC<{
 };
 
 function AppContent() {
+  const { user, isLoaded } = useUser();
+  
+  // Initialize logout cleanup hook
+  useLogoutCleanup();
+  
   // Define all the state variables needed for the different components
   const [currentStep, setCurrentStep] = useState<CurrentStep>("upload");
   const [viewMode, setViewMode] = useState<ViewMode>("business");
   const [uploadedFiles, setUploadedFiles] = useState<string[]>([]);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  
+  // Initialize formData with user info from Clerk when available
   const [formData, setFormData] = useState<FormData>({
-    firstName: "",
-    lastName: "",
-    email: "",
+    firstName: user?.firstName || "",
+    lastName: user?.lastName || "",
+    email: user?.emailAddresses?.[0]?.emailAddress || "",
     phone: "",
     company: "",
     businessType: "",
@@ -69,11 +78,53 @@ function AppContent() {
     urgencyLevel: "",
   });
 
+  // Update formData when user loads
+  useEffect(() => {
+    if (isLoaded && user) {
+      setFormData(prev => ({
+        ...prev,
+        firstName: user.firstName || prev.firstName,
+        lastName: user.lastName || prev.lastName,
+        email: user.emailAddresses?.[0]?.emailAddress || prev.email,
+      }));
+    }
+  }, [isLoaded, user]);
+
   // QBO Auth states
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const [refreshToken, setRefreshToken] = useState<string | null>(null);
   const [realmId, setRealmId] = useState<string | null>(null);
   const [authError, setAuthError] = useState<string | null>(null);
+  const [tokensLoaded, setTokensLoaded] = useState(false);
+
+  // Load stored QBO tokens when user is available
+  useEffect(() => {
+    const loadStoredTokens = async () => {
+      if (!isLoaded || !user) {
+        return;
+      }
+
+      try {
+        logger.debug("Loading stored QBO tokens for user");
+        const tokens = await QBOTokenService.getTokens(user.id);
+        
+        if (tokens && await QBOTokenService.validateTokens(tokens)) {
+          logger.info("Found valid stored QBO tokens");
+          setAccessToken(tokens.access_token);
+          setRefreshToken(tokens.refresh_token);
+          setRealmId(tokens.realm_id);
+        } else {
+          logger.debug("No valid stored tokens found");
+        }
+      } catch (error) {
+        logger.error("Error loading stored QBO tokens", error);
+      } finally {
+        setTokensLoaded(true);
+      }
+    };
+
+    loadStoredTokens();
+  }, [isLoaded, user]);
 
   // Define all the handler functions
   const handleInputChange = (
@@ -135,8 +186,7 @@ function AppContent() {
         <Route
           path="/qbo-auth"
           element={
-            <ProtectedRoute
-              component={QBOAuth}
+            <QBOAuth
               formData={formData}
               accessToken={accessToken}
               refreshToken={refreshToken}

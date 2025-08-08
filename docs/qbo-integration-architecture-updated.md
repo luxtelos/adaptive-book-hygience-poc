@@ -2,7 +2,7 @@
 
 ## Executive Summary
 
-Updated architecture design for QuickBooks Online API integration using **cookie-based token management** instead of Supabase storage. This approach simplifies the architecture while maintaining security and functionality.
+Updated architecture design for QuickBooks Online API integration using **local-cors-proxy** for simple CORS handling and direct QBO API communication. The main integration issue was resolved by fixing the query endpoint request format to use GET with URL parameters instead of POST with JSON body.
 
 ## Updated Architecture Overview
 
@@ -11,13 +11,13 @@ Updated architecture design for QuickBooks Online API integration using **cookie
 graph TB
     A[User Login] --> B[AgentForm]
     B --> C[QBO OAuth]
-    C --> D[N8N Proxy OAuth Callback]
+    C --> D[local-cors-proxy OAuth Callback]
     D --> E[QuickBooks API Token Exchange]
-    E --> F[Set HTTP-Only Cookies]
+    E --> F[Frontend Token Storage]
     F --> G[Assessment Component]
     G --> H[QBO Service Layer]
-    H --> I[Cookies in Headers]
-    I --> J[N8N Proxy with Tokens]
+    H --> I[GET Requests with Query Params]
+    I --> J[local-cors-proxy Forwarding]
     J --> K[QBO Reports API]
     K --> L[Data Transformation]
     L --> M[Perplexity LLM]
@@ -25,177 +25,208 @@ graph TB
     N --> O[User Results]
 ```
 
-## 1. Updated OAuth Flow with Cookie Management
+## 1. Fixed QBO API Query Integration
 
-### Enhanced OAuth Sequence
+### Corrected API Request Sequence
 ```mermaid
 sequenceDiagram
     participant U as User
     participant AF as AgentForm
     participant QA as QBOAuth
-    participant N8N as N8N Proxy
+    participant LCPROXY as local-cors-proxy
     participant QBO as QuickBooks API
     participant AS as Assessment
 
     U->>AF: Submit business info
     AF->>QA: Navigate to OAuth
     QA->>QBO: Initiate OAuth flow
-    QBO->>N8N: OAuth callback with code
-    N8N->>QBO: Exchange code for tokens
-    QBO->>N8N: Return access/refresh tokens + realmId
-    N8N->>U: Set HTTP-Only Cookies + redirect
-    Note over N8N,U: Cookies: qbo_access_token, qbo_refresh_token, qbo_realm_id, qbo_expires_at
-    U->>AS: Navigate to assessment
-    AS->>N8N: API calls with cookies in headers
-    N8N->>QBO: Proxy calls with token from cookies
+    QBO->>LCPROXY: OAuth callback with code
+    LCPROXY->>QBO: Exchange code for tokens
+    QBO->>LCPROXY: Return access/refresh tokens + realmId
+    LCPROXY->>U: Redirect with tokens in URL params
+    U->>AS: Navigate to assessment with tokens
+    AS->>LCPROXY: GET /query?query=SELECT... (corrected format)
+    LCPROXY->>QBO: Forward GET request as-is
+    QBO->>LCPROXY: Return query results
+    LCPROXY->>AS: Return data with CORS headers
 ```
 
-### Cookie Strategy
+### Key Issue Resolution: Query Endpoint Format
+
+The main issue was that QBO's `/query` endpoint expects:
+- **HTTP Method**: GET (not POST)
+- **Query Format**: URL parameter named `query` with SQL string
+- **Content-Type**: Not applicable for GET requests
 
 ```typescript
-interface QBOCookieTokens {
-  qbo_access_token: string;
-  qbo_refresh_token: string;
-  qbo_realm_id: string;
-  qbo_expires_at: string; // ISO timestamp
-  qbo_token_type: string; // "bearer"
-}
+// WRONG (was causing 400 Bad Request):
+const config: QBOApiConfig = {
+  method: "POST",
+  endpoint: "v3/company/{realmId}/query",
+  data: { query: "SELECT * FROM Customer" },
+};
 
-class CookieTokenManager {
-  private readonly COOKIE_OPTIONS = {
-    httpOnly: true,
-    secure: true, // HTTPS only
-    sameSite: 'strict' as const,
-    maxAge: 101 * 24 * 60 * 60 * 1000, // 101 days (QBO token lifetime)
-    path: '/'
-  };
+// CORRECT (fixed implementation):
+const config: QBOApiConfig = {
+  method: "GET", 
+  endpoint: "v3/company/{realmId}/query",
+  params: { query: "SELECT * FROM Customer" },
+};
 
-  // Set tokens as HTTP-only cookies after OAuth callback
-  setTokenCookies(tokens: QBOTokens, response: Response): void {
-    response.cookie('qbo_access_token', tokens.access_token, this.COOKIE_OPTIONS);
-    response.cookie('qbo_refresh_token', tokens.refresh_token, this.COOKIE_OPTIONS);
-    response.cookie('qbo_realm_id', tokens.realm_id, this.COOKIE_OPTIONS);
-    response.cookie('qbo_expires_at', tokens.expires_at, this.COOKIE_OPTIONS);
-    response.cookie('qbo_token_type', tokens.token_type || 'bearer', this.COOKIE_OPTIONS);
+// This generates: GET /v3/company/{realmId}/query?query=SELECT%20*%20FROM%20Customer
+```
+
+### local-cors-proxy Integration Benefits
+
+```typescript
+// local-cors-proxy simply forwards requests as-is:
+// Frontend: GET /proxy/v3/company/123/query?query=SELECT%20*%20FROM%20Customer
+// Forwarded to QBO: GET https://sandbox-quickbooks.api.intuit.com/v3/company/123/query?query=SELECT%20*%20FROM%20Customer
+
+class SimpleTokenManager {
+  private accessToken: string | null = null;
+  private realmId: string | null = null;
+
+  setAuth(accessToken: string, realmId: string): void {
+    this.accessToken = accessToken;
+    this.realmId = realmId;
   }
 
-  // Extract tokens from request cookies
-  getTokensFromCookies(request: Request): QBOTokens | null {
-    const cookies = this.parseCookies(request.headers.cookie || '');
-    
-    if (!cookies.qbo_access_token || !cookies.qbo_refresh_token) {
-      return null;
+  getAuthHeaders(): Record<string, string> {
+    if (!this.accessToken) {
+      throw new Error('No access token available');
     }
-
+    
     return {
-      access_token: cookies.qbo_access_token,
-      refresh_token: cookies.qbo_refresh_token,
-      realm_id: cookies.qbo_realm_id,
-      expires_at: cookies.qbo_expires_at,
-      token_type: cookies.qbo_token_type || 'bearer'
+      'Authorization': `Bearer ${this.accessToken}`,
+      'Accept': 'application/json'
     };
   }
-
-  // Check if token is expired
-  isTokenExpired(expiresAt: string): boolean {
-    const expiry = new Date(expiresAt);
-    const now = new Date();
-    const bufferTime = 5 * 60 * 1000; // 5 minutes buffer
-    
-    return now.getTime() >= (expiry.getTime() - bufferTime);
-  }
 }
 ```
 
-## 2. Updated N8N Proxy Service Architecture
+## 2. Corrected QBO Service Implementation
 
-### Proxy Service with Cookie Integration
+### Fixed Service with local-cors-proxy
 
 ```typescript
-class QBOProxyService implements QBOApiService {
-  private readonly PROXY_BASE_URL = 'https://n8n-1-102-1-c1zi.onrender.com/webhook/e40348b4-6806-41ef-8d48-e711fdc5ad90/proxy';
-  private cookieManager = new CookieTokenManager();
+class QBOApiService {
+  private readonly PROXY_BASE_URL = import.meta.env.VITE_QBO_PROXY_BASE_URL || "/proxy";
+  private accessToken: string | null = null;
+  private realmId: string | null = null;
 
-  async proxyCall<T>(config: QBOApiConfig): Promise<QBOApiResponse<T>> {
+  setAuth(accessToken: string, realmId: string): void {
+    this.accessToken = accessToken;
+    this.realmId = realmId;
+  }
+
+  async fetchCustomers(): Promise<QBOCustomer[]> {
+    const config: QBOApiConfig = {
+      method: "GET", // FIXED: was POST
+      endpoint: "v3/company/{realmId}/query",
+      params: { query: "SELECT * FROM Customer" }, // FIXED: was data
+    };
+    return this.rateLimiter.enqueue(config);
+  }
+
+  async fetchChartOfAccounts(): Promise<QBOAccount[]> {
+    const config: QBOApiConfig = {
+      method: "GET", // FIXED: was POST
+      endpoint: "v3/company/{realmId}/query", 
+      params: { query: "SELECT * FROM Account" }, // FIXED: was data
+    };
+    return this.rateLimiter.enqueue(config);
+  }
+
+  private async makeDirectRequest<T>(config: QBOApiConfig): Promise<T> {
+    if (!this.accessToken || !this.realmId) {
+      throw new Error("Authentication required. Call setAuth() first.");
+    }
+
     const { method, endpoint, params, data } = config;
-    
-    // Get tokens from cookies (browser automatically sends them)
-    const tokens = this.getTokensFromRequest();
-    
-    if (!tokens) {
-      throw new Error('NO_TOKENS_FOUND');
-    }
-    
-    if (this.cookieManager.isTokenExpired(tokens.expires_at)) {
-      await this.refreshTokenViaCookies();
-      // After refresh, browser will have new cookies
-    }
-    
-    const proxyUrl = `${this.PROXY_BASE_URL}/${endpoint}`;
-    const queryParams = new URLSearchParams({
-      method,
-      realmID: tokens.realm_id,
-      access_token: tokens.access_token,
-      refresh_token: tokens.refresh_token,
-      expires_in: tokens.expires_at,
-      proxyPath: endpoint,
-      query: JSON.stringify(params || {})
-    });
-    
-    // Cookies are automatically included in the request
-    const response = await fetch(`${proxyUrl}?${queryParams}`, {
-      method: 'POST',
-      credentials: 'include', // Important: include cookies
-      headers: { 
-        'Content-Type': 'application/json'
-      },
-      body: data ? JSON.stringify(data) : undefined
-    });
-    
-    return this.handleProxyResponse<T>(response);
-  }
+    const endpointWithRealm = endpoint.replace("{realmId}", this.realmId);
 
-  private getTokensFromRequest(): QBOTokens | null {
-    // In browser environment, we can't directly access HTTP-only cookies
-    // The N8N proxy will handle token extraction from cookies
-    // Frontend just needs to make requests with credentials: 'include'
-    
-    // For client-side token validation, we could use a separate endpoint
-    return null; // Tokens handled by N8N proxy
-  }
+    // Build URL with query parameters
+    let url = `${this.PROXY_BASE_URL}/${endpointWithRealm}`;
+    if (params) {
+      const urlParams = new URLSearchParams();
+      Object.entries(params).forEach(([key, value]) => {
+        if (value !== undefined && value !== null) {
+          urlParams.append(key, String(value));
+        }
+      });
+      if (urlParams.toString()) {
+        url += `?${urlParams.toString()}`;
+      }
+    }
 
-  async refreshTokenViaCookies(): Promise<void> {
-    const refreshUrl = `${this.PROXY_BASE_URL}/refresh-token`;
-    
-    const response = await fetch(refreshUrl, {
-      method: 'POST',
-      credentials: 'include', // Send existing cookies
-      headers: { 'Content-Type': 'application/json' }
+    // Prepare headers and request body
+    const headers: Record<string, string> = {
+      Accept: "application/json",
+      Authorization: `Bearer ${this.accessToken}`,
+    };
+
+    let requestBody: string | undefined;
+    if (method === "POST" && data) {
+      headers["Content-Type"] = "application/json";
+      requestBody = JSON.stringify(data);
+    }
+
+    const response = await fetch(url, {
+      method: method,
+      credentials: "include",
+      headers,
+      body: requestBody,
     });
-    
+
     if (!response.ok) {
-      throw new Error('TOKEN_REFRESH_FAILED');
+      throw new Error(`QBO API Error: ${response.status} ${response.statusText}`);
     }
-    
-    // N8N proxy will set new cookies automatically
-    // Browser will use them for subsequent requests
+
+    const result = await response.json();
+    return this.extractQueryResults(result);
   }
 }
 ```
 
-## 3. Updated OAuth Callback Implementation
+## 3. local-cors-proxy Setup and Configuration
 
-### Modified OAuthCallback Component
+### Proxy Configuration for QBO API
 
 ```typescript
-// Updated OAuthCallback component
+// local-cors-proxy setup (running on Render.com)
+// Base URL: https://local-proxy-quickbooks.onrender.com
+// 
+// The proxy forwards requests from:
+// Frontend: GET /proxy/v3/company/123/query?query=SELECT%20*%20FROM%20Customer
+// To QBO API: GET https://sandbox-quickbooks.api.intuit.com/v3/company/123/query?query=SELECT%20*%20FROM%20Customer
+
+// Vite proxy configuration for development
+export default defineConfig({
+  server: {
+    proxy: {
+      "/proxy": {
+        target: "https://local-proxy-quickbooks.onrender.com",
+        changeOrigin: true,
+        secure: true,
+      },
+    },
+  },
+});
+```
+
+### Simplified OAuthCallback Component
+
+```typescript
+// Updated OAuthCallback component for local-cors-proxy
 const OAuthCallback: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
 
   useEffect(() => {
     const params = new URLSearchParams(location.search);
-    const qbTokens = params.get("qb_tokens");
+    const accessToken = params.get("access_token");
+    const realmId = params.get("realmId");
     const error = params.get("error");
 
     if (error) {
@@ -204,20 +235,16 @@ const OAuthCallback: React.FC = () => {
       return;
     }
 
-    if (qbTokens) {
-      try {
-        const tokens = JSON.parse(decodeURIComponent(qbTokens));
-        console.log("Tokens received and set as cookies by N8N proxy");
-        
-        // Cookies are already set by N8N proxy
-        // No need to handle tokens in frontend
-        navigate("/assessment");
-      } catch (err) {
-        console.error("Failed to parse tokens:", err);
-        navigate('/qbo-auth?error=' + encodeURIComponent('Invalid token response'));
-      }
+    if (accessToken && realmId) {
+      // Store tokens in React state or context
+      // Simple approach for development/testing
+      sessionStorage.setItem('qbo_access_token', accessToken);
+      sessionStorage.setItem('qbo_realm_id', realmId);
+      
+      console.log("Tokens received from local-cors-proxy");
+      navigate("/assessment");
     } else {
-      console.error("No tokens in callback");
+      console.error("Missing OAuth parameters");
       navigate('/qbo-auth?error=' + encodeURIComponent('No authorization tokens received'));
     }
   }, [navigate, location]);
@@ -238,70 +265,81 @@ const OAuthCallback: React.FC = () => {
 };
 ```
 
-## 4. Simplified Supabase Schema
+## 4. Testing and Verification
 
-Since we're not storing tokens in Supabase, we can simplify the schema:
+### Request Format Verification
 
-```sql
--- Remove token-related fields from user_assessments
-CREATE TABLE user_assessments (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id TEXT NOT NULL, -- Clerk user ID
-  first_name TEXT NOT NULL,
-  last_name TEXT NOT NULL,
-  email TEXT NOT NULL,
-  phone TEXT,
-  company TEXT NOT NULL,
-  business_type TEXT NOT NULL,
-  monthly_revenue TEXT,
-  current_software TEXT,
-  bookkeeping_challenges TEXT,
-  urgency_level TEXT,
-  assessment_status TEXT DEFAULT 'pending',
-  qbo_company_name TEXT, -- From QBO company info
-  qbo_realm_id TEXT, -- For reference only
-  created_at TIMESTAMPTZ DEFAULT NOW(),
-  updated_at TIMESTAMPTZ DEFAULT NOW()
-);
+```bash
+# CORRECT format now generated:
+GET /proxy/v3/company/123/query?query=SELECT%20*%20FROM%20Customer
+Authorization: Bearer {access_token}
+Accept: application/json
 
--- Optional: Store assessment results
-CREATE TABLE assessment_results (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_assessment_id UUID REFERENCES user_assessments(id),
-  overall_score INTEGER,
-  pillar_scores JSONB,
-  critical_issues JSONB,
-  recommendations JSONB,
-  analysis_type TEXT, -- 'business' or 'technical'
-  created_at TIMESTAMPTZ DEFAULT NOW()
-);
+# WRONG format that was causing 400 errors:
+POST /proxy/v3/company/123/query
+Content-Type: application/json
+Authorization: Bearer {access_token}
+{"query": "SELECT * FROM Customer"}
+```
+
+### Expected QBO API Response
+
+```json
+{
+  "QueryResponse": {
+    "Customer": [
+      {
+        "Id": "1",
+        "Name": "Customer Name",
+        "CompanyName": "Customer Company",
+        "Balance": 0,
+        "Active": true
+      }
+    ],
+    "maxResults": 1000,
+    "startPosition": 1
+  },
+  "time": "2025-01-07T12:34:56.789Z"
+}
+```
+
+### Environment Configuration
+
+```bash
+# Required for local-cors-proxy integration
+VITE_QBO_PROXY_BASE_URL=/proxy
+VITE_QBO_REQUEST_TIMEOUT=30000
+VITE_QBO_CLIENT_ID=your_qbo_client_id
+VITE_QBO_REDIRECT_URI=https://local-proxy-quickbooks.onrender.com/oauth-callback
+VITE_QBO_SCOPE=com.intuit.quickbooks.accounting
 ```
 
 ## 5. Updated Assessment Component Integration
 
-### Simplified Assessment Flow
+### Fixed Assessment Flow with Working QBO Integration
 
 ```typescript
-// Updated Assessment component with cookie-based auth
+// Updated Assessment component with corrected QBO integration
 const Assessment: React.FC<AssessmentProps> = (props) => {
   const [qboConnected, setQboConnected] = useState<boolean>(false);
   const [fetchingData, setFetchingData] = useState<boolean>(false);
   const [fetchProgress, setFetchProgress] = useState<FetchProgress | null>(null);
+  const [financialData, setFinancialData] = useState<QBOFinancialReports | null>(null);
   
-  const qboService = new QBOProxyService();
+  const qboService = new QBOApiService();
 
-  // Check if user has valid QBO connection via cookie validation endpoint
+  // Check if user has valid QBO connection
   useEffect(() => {
     checkQBOConnection();
   }, []);
 
   const checkQBOConnection = async () => {
     try {
-      const response = await fetch('/api/qbo/validate-connection', {
-        credentials: 'include' // Send cookies
-      });
+      const accessToken = sessionStorage.getItem('qbo_access_token');
+      const realmId = sessionStorage.getItem('qbo_realm_id');
       
-      if (response.ok) {
+      if (accessToken && realmId) {
+        qboService.setAuth(accessToken, realmId);
         setQboConnected(true);
       } else {
         setQboConnected(false);
@@ -321,31 +359,35 @@ const Assessment: React.FC<AssessmentProps> = (props) => {
     setFetchingData(true);
     
     try {
-      const reportConfigs = generateReportConfigs();
-      const financialData = await qboService.fetchAllReports(
-        reportConfigs,
-        (progress) => setFetchProgress(progress)
-      );
+      // Now using corrected GET requests with query parameters
+      const customers = await qboService.fetchCustomers();
+      const chartOfAccounts = await qboService.fetchChartOfAccounts(); 
+      const companyInfo = await qboService.fetchCompanyInfo();
+      const profitAndLoss = await qboService.fetchProfitAndLoss(dateRange);
+      const balanceSheet = await qboService.fetchBalanceSheet(dateRange);
       
-      // Transform and analyze data
-      const analysis = await analyzeFinancialData(financialData);
+      const financialReports: QBOFinancialReports = {
+        customers,
+        chartOfAccounts,
+        companyInfo,
+        profitAndLoss,
+        balanceSheet,
+        // ... other reports
+      };
       
-      // Update component state with real data
-      setAssessmentResults(analysis);
+      setFinancialData(financialReports);
       setCurrentStep('results');
       
     } catch (error) {
-      console.error('Data fetch failed:', error);
+      console.error('QBO data fetch failed:', error);
       
-      if (error.message.includes('NO_TOKENS_FOUND')) {
+      if (error.message.includes('Authentication required')) {
         navigate('/qbo-auth');
       } else {
-        // Handle other errors
-        setErrorState(error.message);
+        setErrorMessage(`Failed to fetch QBO data: ${error.message}`);
       }
     } finally {
       setFetchingData(false);
-      setFetchProgress(null);
     }
   };
 
@@ -353,82 +395,117 @@ const Assessment: React.FC<AssessmentProps> = (props) => {
 };
 ```
 
-## 6. N8N Proxy Integration Points
+## 6. local-cors-proxy Configuration
 
-### Required N8N Proxy Endpoints
+### Required Proxy Behavior
 
 ```typescript
-// N8N proxy should handle these endpoints:
+// local-cors-proxy should handle these scenarios:
 
-// 1. OAuth callback - sets cookies
-POST /webhook/115c6828-fb49-4a60-aa8d-e6eb5346f24d
-// Sets HTTP-only cookies and redirects to frontend
+// 1. OAuth callback handling
+// Receives: GET /oauth-callback?code=xxx&realmId=123&state=xyz
+// Exchanges code for tokens with QBO
+// Redirects to: http://localhost:3000/oauth-callback?access_token=xxx&realmId=123
 
-// 2. Token validation
-POST /webhook/e40348b4-6806-41ef-8d48-e711fdc5ad90/proxy/validate-connection
-// Checks if cookies contain valid tokens
+// 2. API request forwarding (the key fix)
+// Receives: GET /proxy/v3/company/123/query?query=SELECT%20*%20FROM%20Customer
+// Removes /proxy prefix
+// Forwards to: GET https://sandbox-quickbooks.api.intuit.com/v3/company/123/query?query=SELECT%20*%20FROM%20Customer
+// Adds CORS headers to response
+// Returns QBO response to frontend
 
-// 3. Token refresh  
-POST /webhook/e40348b4-6806-41ef-8d48-e711fdc5ad90/proxy/refresh-token
-// Refreshes tokens and updates cookies
-
-// 4. Generic QBO API proxy
-POST /webhook/e40348b4-6806-41ef-8d48-e711fdc5ad90/proxy/:proxyPath
-// Proxies QBO API calls using tokens from cookies
+// 3. CORS header injection
+app.use((req, res, next) => {
+  res.header('Access-Control-Allow-Origin', process.env.ALLOWED_ORIGIN || '*');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  next();
+});
 ```
 
 ## 7. Security Considerations
 
-### Cookie Security Best Practices
+### Token Security with local-cors-proxy
 
 ```typescript
-const SECURE_COOKIE_CONFIG = {
-  httpOnly: true,        // Prevent XSS attacks
-  secure: true,          // HTTPS only
-  sameSite: 'strict',    // CSRF protection
-  maxAge: 101 * 24 * 60 * 60 * 1000, // 101 days
-  path: '/',             // Available site-wide
-  domain: '.yourdomain.com' // Adjust for your domain
+// Security measures for token handling:
+
+// 1. Use HTTPS in production
+const PRODUCTION_CONFIG = {
+  proxyUrl: 'https://local-proxy-quickbooks.onrender.com',
+  corsOrigin: 'https://yourdomain.com',
+  tokenStorage: 'sessionStorage', // Cleared on browser close
 };
 
-// Additional security measures:
-// 1. Regular token rotation
-// 2. Secure domain configuration
-// 3. HTTPS enforcement
-// 4. CORS policy configuration
+// 2. Token validation and refresh
+class TokenValidator {
+  validateToken(token: string): boolean {
+    try {
+      const payload = JSON.parse(atob(token.split('.')[1]));
+      const expiry = payload.exp * 1000; // Convert to milliseconds
+      return Date.now() < expiry;
+    } catch {
+      return false;
+    }
+  }
+
+  shouldRefreshToken(token: string): boolean {
+    try {
+      const payload = JSON.parse(atob(token.split('.')[1]));
+      const expiry = payload.exp * 1000;
+      const fiveMinutes = 5 * 60 * 1000;
+      return Date.now() > (expiry - fiveMinutes);
+    } catch {
+      return true;
+    }
+  }
+}
+
+// 3. CORS configuration
+const corsConfig = {
+  origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+};
 ```
 
 ## Implementation Benefits
 
-### Advantages of Cookie-Based Approach
+### Advantages of local-cors-proxy Approach
 
-1. **Simplified Architecture**: No Supabase token storage or encryption
-2. **Automatic Security**: HTTP-only cookies prevent XSS
-3. **Browser Managed**: Automatic cookie handling in requests
-4. **Stateless Frontend**: No token management logic in React
-5. **N8N Centralization**: All token logic handled by proxy
-6. **Better Performance**: No database queries for token retrieval
+1. **Simple Architecture**: Direct proxy forwarding without transformation
+2. **Easy Debugging**: Request/response format is transparent
+3. **No Complex Logic**: Proxy just adds CORS headers and forwards
+4. **Frontend Control**: Complete control over request format in React
+5. **Quick Resolution**: Query endpoint fix was just changing GET vs POST
+6. **Development Friendly**: Easy to test and modify
 
-### Updated Implementation Phases
+### Implementation Status
 
-**Phase 1: Cookie Integration** (Week 1)
-- Update N8N proxy to set HTTP-only cookies
-- Modify OAuth callback to handle cookie-based flow
-- Add token validation endpoint
+**✅ Completed: Core Integration Fix**
+- Fixed QBO query endpoint to use GET with URL parameters
+- Updated all query methods to use correct HTTP method
+- Resolved 400 Bad Request errors for customer and account fetching
+- Validated TypeScript interfaces for QBO response handling
 
-**Phase 2: Frontend Updates** (Week 1-2)  
-- Update Assessment component to use cookie-based auth
-- Remove token storage logic from React components
-- Add connection validation checks
+**✅ Completed: local-cors-proxy Integration**
+- Configured Vite proxy for development
+- Set up production proxy on Render.com
+- Implemented OAuth callback token handling
+- Added proper Authorization header management
 
-**Phase 3: Data Integration** (Week 2-3)
-- Implement QBO data fetching with cookies
-- Add progress tracking and error handling
-- Replace mock data with real QBO responses
+**🔧 Next Steps: Enhanced Features**
+- Implement comprehensive financial report fetching
+- Add rate limiting and retry logic
+- Integrate with Perplexity LLM for analysis
+- Add PDF report generation
+- Implement assessment result storage
 
-**Phase 4: Analysis & Generation** (Week 3-4)
-- Integrate Perplexity LLM analysis
-- Implement PDF report generation
-- End-to-end testing and optimization
+**🔧 Future Improvements**
+- Add token refresh logic
+- Implement caching for frequently accessed data
+- Add comprehensive error handling and user feedback
+- Performance optimization for large datasets
 
-This cookie-based approach significantly simplifies the architecture while maintaining security and functionality.
+This simplified approach resolves the immediate integration issues and provides a solid foundation for building the complete financial assessment platform.

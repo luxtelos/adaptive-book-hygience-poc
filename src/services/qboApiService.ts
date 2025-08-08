@@ -1,68 +1,80 @@
+import { logger } from "../lib/logger";
+
 /**
- * QuickBooks Online API Service Layer
+ * @file qboApiService.ts
+ * @description Service for interacting with the QuickBooks Online API via a proxy.
  *
- * Provides comprehensive access to QBO financial data through N8N proxy
- * with cookie-based authentication, rate limiting, and error handling.
+ * This service class abstracts the complexities of making API calls to QuickBooks Online,
+ * including rate limiting, error handling, and data transformation. It is designed to be
+ * used with a server-side proxy that securely handles OAuth tokens and forwards
+ * requests to the QBO API.
+ *
+ * Key Features:
+ * - Rate Limiting: Implements a queue-based rate limiter to avoid hitting QBO API limits.
+ * - Error Handling: Provides a custom QBOError class for structured error information.
+ * - Authentication: Manages access token and realm ID for API requests.
+ * - Data Fetching: Offers methods for fetching common QBO reports and data entities.
+ * - Type Safety: Includes comprehensive TypeScript interfaces for API responses.
  */
 
-import logger from "../lib/logger";
-
-// ============================================================================
-// TYPE DEFINITIONS AND INTERFACES
-// ============================================================================
+// =================================================================================
+// TYPE DEFINITIONS & INTERFACES
+// =================================================================================
 
 /**
- * Progress callback type for multi-report fetching
+ * Callback function for tracking progress of long-running operations.
+ * @param progress - A number between 0 and 1 representing completion percentage.
  */
-export type ProgressCallback = (progress: FetchProgress) => void;
+export type ProgressCallback = (progress: number) => void;
 
 /**
- * Progress tracking interface
+ * Interface for detailed progress tracking.
  */
-export interface FetchProgress {
-  currentStep: string;
-  completedSteps: number;
-  totalSteps: number;
-  percentage: number;
+interface FetchProgress {
+  total: number;
+  completed: number;
+  label: string;
   error?: string;
 }
 
 /**
- * Date range interface for financial reports
+ * Represents a date range for filtering reports.
  */
 export interface DateRange {
-  start_date: string; // YYYY-MM-DD format
-  end_date: string; // YYYY-MM-DD format
+  startDate: string; // YYYY-MM-DD
+  endDate: string; // YYYY-MM-DD
 }
 
 /**
- * Generic QBO API response wrapper
+ * Generic structure for a QBO API response.
  */
-export interface QBOApiResponse<T> {
+interface QBOApiResponse<T> {
   QueryResponse?: {
-    [key: string]: T[] | number | undefined;
-    startPosition?: number;
     maxResults?: number;
+    startPosition?: number;
+  } & {
+    [key: string]: T[];
   };
-  fault?: {
-    error: Array<{
-      Detail: string;
+  Fault?: {
+    Error: {
+      Message: string;
+      Detail?: string;
       code: string;
-      element: string;
-    }>;
+    }[];
+    type: string;
   };
   time: string;
 }
 
 /**
- * QBO Customer interface
+ * Represents a QuickBooks Customer.
  */
 export interface QBOCustomer {
   Id: string;
-  Name: string;
-  CompanyName?: string;
+  SyncToken: string;
   DisplayName: string;
-  Active: boolean;
+  FullyQualifiedName: string;
+  CompanyName?: string;
   PrimaryEmailAddr?: {
     Address: string;
   };
@@ -70,13 +82,7 @@ export interface QBOCustomer {
     FreeFormNumber: string;
   };
   BillAddr?: QBOAddress;
-  ShipAddr?: QBOAddress;
   Balance: number;
-  BalanceWithJobs: number;
-  CurrencyRef?: {
-    value: string;
-    name: string;
-  };
   MetaData: {
     CreateTime: string;
     LastUpdatedTime: string;
@@ -84,48 +90,38 @@ export interface QBOCustomer {
 }
 
 /**
- * QBO Address interface
+ * Represents a physical address in QBO.
  */
 export interface QBOAddress {
-  Id?: string;
+  Id: string;
   Line1?: string;
   Line2?: string;
-  Line3?: string;
-  Line4?: string;
-  Line5?: string;
   City?: string;
-  Country?: string;
-  CountrySubDivisionCode?: string;
+  CountrySubDivisionCode?: string; // State/Province
   PostalCode?: string;
+  Country?: string;
 }
 
 /**
- * QBO Company Information interface
+ * Represents the company information.
  */
 export interface QBOCompanyInfo {
-  Id: string;
   CompanyName: string;
-  LegalName?: string;
-  CompanyAddr?: QBOAddress;
-  CustomerCommunicationAddr?: QBOAddress;
-  LegalAddr?: QBOAddress;
-  PrimaryPhone?: {
+  LegalName: string;
+  CompanyAddr: QBOAddress;
+  CustomerCommunicationAddr: QBOAddress;
+  LegalAddr: QBOAddress;
+  PrimaryPhone: {
     FreeFormNumber: string;
   };
-  CompanyStartDate?: string;
-  FiscalYearStartMonth?: string;
-  Country?: string;
-  Email?: {
+  Email: {
     Address: string;
   };
-  WebAddr?: {
+  WebAddr: {
     URI: string;
   };
-  SupportedLanguages?: string;
-  NameValue?: Array<{
-    Name: string;
-    Value: string;
-  }>;
+  FiscalYearStartMonth: string;
+  Country: string;
   MetaData: {
     CreateTime: string;
     LastUpdatedTime: string;
@@ -133,29 +129,17 @@ export interface QBOCompanyInfo {
 }
 
 /**
- * QBO Account interface (Chart of Accounts)
+ * Represents an account in the Chart of Accounts.
  */
 export interface QBOAccount {
-  Id: string;
   Name: string;
-  SubAccount: boolean;
-  ParentRef?: {
-    value: string;
-    name: string;
-  };
-  Description?: string;
-  FullyQualifiedName: string;
-  Active: boolean;
-  Classification: string;
+  Id: string;
+  SyncToken: string;
   AccountType: string;
   AccountSubType: string;
   CurrentBalance: number;
-  CurrentBalanceWithSubAccounts: number;
-  CurrencyRef?: {
-    value: string;
-    name: string;
-  };
-  AcctNum?: string;
+  Classification: string;
+  Active: boolean;
   MetaData: {
     CreateTime: string;
     LastUpdatedTime: string;
@@ -163,46 +147,40 @@ export interface QBOAccount {
 }
 
 /**
- * QBO Report Column interface
+ * Represents a column in a QBO report.
  */
-export interface QBOReportColumn {
+interface QBOReportColumn {
   ColTitle: string;
   ColType: string;
-  MetaData?: Array<{
+  MetaData?: {
     Name: string;
     Value: string;
-  }>;
+  }[];
 }
 
 /**
- * QBO Report Row interface
+ * Represents a row in a QBO report.
  */
-export interface QBOReportRow {
-  ColData: Array<{
+interface QBOReportRow {
+  ColData: {
     value: string;
-    href?: string;
     id?: string;
-  }>;
-  type?: string;
+  }[];
+  type?: "Data" | "Section";
   group?: string;
 }
 
 /**
- * QBO Report interface (P&L, Balance Sheet, etc.)
+ * Represents a standard QBO financial report.
  */
 export interface QBOReport {
   Header: {
-    ReportName: string;
-    Option: Array<{
-      Name: string;
-      Value: string;
-    }>;
     Time: string;
-    ReportBasis: string;
-    StartPeriod?: string;
-    EndPeriod?: string;
+    ReportName: string;
+    DateMacro: string;
+    StartPeriod: string;
+    EndPeriod: string;
     Currency: string;
-    Customer?: string;
   };
   Columns: {
     Column: QBOReportColumn[];
@@ -213,39 +191,26 @@ export interface QBOReport {
 }
 
 /**
- * QBO Journal Entry interface (General Ledger)
+ * Represents a Journal Entry.
  */
-export interface QBOJournalEntry {
+interface QBOJournalEntry {
   Id: string;
-  DocNumber?: string;
+  SyncToken: string;
   TxnDate: string;
   PrivateNote?: string;
-  Adjustment: boolean;
-  Line: Array<{
+  Line: {
     Id: string;
     Description?: string;
     Amount: number;
-    DetailType: string;
+    DetailType: "JournalEntryLineDetail";
     JournalEntryLineDetail: {
       PostingType: "Debit" | "Credit";
       AccountRef: {
         value: string;
         name: string;
       };
-      Entity?: {
-        EntityRef: {
-          value: string;
-          name: string;
-        };
-        Type: string;
-      };
     };
-  }>;
-  TotalAmt: number;
-  CurrencyRef?: {
-    value: string;
-    name: string;
-  };
+  }[];
   MetaData: {
     CreateTime: string;
     LastUpdatedTime: string;
@@ -253,264 +218,260 @@ export interface QBOJournalEntry {
 }
 
 /**
- * QBO Aging Report interface
+ * Represents an A/R or A/P Aging Report.
  */
-export interface QBOAgingReport {
-  Header: {
-    ReportName: string;
-    Option: Array<{
-      Name: string;
-      Value: string;
+interface QBOAgingReport extends QBOReport {
+  // Aging reports have a specific structure that can be further detailed if needed.
+}
+
+/**
+ * Represents an entry in the Audit Log.
+ */
+interface QBOAuditLogEntry {
+  EventDate: string;
+  User: string;
+  Event: string;
+  Entity: string;
+  Details: string;
+}
+
+/**
+ * Represents reconciliation data for a single account.
+ */
+export interface QBOReconciliationAssessment {
+  accountId: string;
+  accountName: string;
+  lastReconciledDate: string | null;
+  unreconciledDifference: number;
+  outstandingItems: {
+    thirtyDays: { count: number; totalAmount: number };
+    sixtyDays: { count: number; totalAmount: number };
+    ninetyDays: { count: number; totalAmount: number };
+  };
+  qualityScore: number;
+  riskLevel: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
+  recommendations: string[];
+}
+
+/**
+ * Represents the complete reconciliation assessment for all accounts.
+ */
+export interface QBOAllAccountsReconciliation {
+  assessments: QBOReconciliationAssessment[];
+  criticalAccounts: number;
+  totalAccounts: number;
+  accountTypesSummary?: {
+    accountTypes: Record<string, string[]>;
+    totalAccounts: number;
+    accountSummary: Array<{
+      accountType: string;
+      subtypes: string[];
+      count: number;
     }>;
-    Time: string;
-    ReportBasis: string;
-    Currency: string;
-  };
-  Columns: {
-    Column: QBOReportColumn[];
-  };
-  Rows: {
-    Row: QBOReportRow[];
   };
 }
 
 /**
- * QBO Audit Log Entry interface
+ * Represents outstanding transaction items.
  */
-export interface QBOAuditLogEntry {
-  Id: string;
-  TimeCreated: string;
-  Operation: string;
-  SourceServiceType: string;
-  User: {
-    UserName: string;
-    UserId: string;
-  };
-  Entity: {
-    Name: string;
-    Type: string;
-  };
-  Changes?: Array<{
-    FieldName: string;
-    OldValue?: string;
-    NewValue?: string;
-  }>;
+export interface QBOOutstandingItems {
+  count: number;
+  totalAmount: number;
+  items: any[];
 }
 
 /**
- * Comprehensive financial data structure
+ * Represents transaction aging analysis.
+ */
+export interface QBOTransactionAging {
+  sevenDays: QBOOutstandingItems;
+  thirtyDays: QBOOutstandingItems;
+  sixtyDays: QBOOutstandingItems;
+  ninetyDays: QBOOutstandingItems;
+}
+
+/**
+ * Represents a transaction from the TransactionList report.
+ */
+export interface QBOTransaction {
+  date: string;
+  transactionType: string;
+  number?: string;
+  name: string;
+  memo?: string;
+  account: string;
+  amount: number;
+  cleared: boolean;
+}
+
+/**
+ * A container for all fetched financial reports.
  */
 export interface QBOFinancialReports {
-  companyInfo: QBOCompanyInfo;
-  customers: QBOCustomer[];
-  chartOfAccounts: QBOAccount[];
-  profitAndLoss: QBOReport;
-  balanceSheet: QBOReport;
-  generalLedger: QBOJournalEntry[];
-  trialBalance: QBOReport;
-  bankReconciliation: QBOReport;
-  arAgingSummary: QBOAgingReport;
-  arAgingDetail: QBOAgingReport;
-  apAgingSummary: QBOAgingReport;
-  apAgingDetail: QBOAgingReport;
-  auditLog: QBOAuditLogEntry[];
+  profitAndLoss?: QBOReport;
+  balanceSheet?: QBOReport;
+  generalLedger?: QBOReport;
+  trialBalance?: QBOReport;
+  arAging?: QBOAgingReport;
+  apAging?: QBOAgingReport;
 }
 
 /**
- * API request configuration
+ * Configuration for a single QBO API request.
  */
-export interface QBOApiConfig {
+interface QBOApiConfig {
   method: "GET" | "POST";
   endpoint: string;
-  params?: Record<string, string>;
+  params?: Record<string, any>;
   data?: any;
 }
 
 /**
- * Rate limiting configuration
+ * Configuration for the rate limiter.
  */
-export interface RateLimitConfig {
+interface RateLimitConfig {
   maxRequestsPerMinute: number;
   retryDelayMs: number;
   maxRetries: number;
 }
 
 /**
- * Error types for different failure scenarios
+ * Enum for different types of errors that can occur.
  */
 export enum QBOErrorType {
-  NETWORK_ERROR = "NETWORK_ERROR",
-  RATE_LIMIT_ERROR = "RATE_LIMIT_ERROR",
-  AUTH_ERROR = "AUTH_ERROR",
-  QBO_API_ERROR = "QBO_API_ERROR",
-  PARSING_ERROR = "PARSING_ERROR",
-  TIMEOUT_ERROR = "TIMEOUT_ERROR",
-  UNKNOWN_ERROR = "UNKNOWN_ERROR",
+  NETWORK_ERROR,
+  TIMEOUT_ERROR,
+  QBO_API_ERROR,
+  AUTHENTICATION_ERROR,
+  UNKNOWN_ERROR,
 }
 
 /**
- * Custom QBO Error class
+ * Custom error class for handling API-related issues.
  */
 export class QBOError extends Error {
   constructor(
     public type: QBOErrorType,
-    message: string,
+    public message: string,
     public originalError?: any,
-    public retryable: boolean = false,
+    public isRetryable: boolean = false,
   ) {
     super(message);
     this.name = "QBOError";
   }
 }
 
-// ============================================================================
-// RATE LIMITING AND QUEUE MANAGEMENT
-// ============================================================================
+// =================================================================================
+// RATE LIMITER CLASS
+// =================================================================================
 
-/**
- * Request queue item
- */
 interface QueuedRequest {
   config: QBOApiConfig;
+  retries: number;
   resolve: (value: any) => void;
-  reject: (error: any) => void;
-  timestamp: number;
-  retryCount: number;
+  reject: (reason?: any) => void;
 }
 
-/**
- * Rate limiter class with queue management
- */
 class RateLimiter {
   private queue: QueuedRequest[] = [];
   private requestTimes: number[] = [];
   private processing = false;
+
   constructor(private config: RateLimitConfig) {}
 
-  /**
-   * Add request to queue
-   */
   async enqueue<T>(config: QBOApiConfig): Promise<T> {
     return new Promise((resolve, reject) => {
-      this.queue.push({
-        config,
-        resolve,
-        reject,
-        timestamp: Date.now(),
-        retryCount: 0,
-      });
-
-      this.processQueue();
+      this.queue.push({ config, retries: 0, resolve, reject });
+      if (!this.processing) {
+        this.processQueue();
+      }
     });
   }
 
-  /**
-   * Process queued requests with rate limiting
-   */
-  private async processQueue(): Promise<void> {
-    if (this.processing || this.queue.length === 0) {
+  private async processQueue() {
+    if (this.queue.length === 0) {
+      this.processing = false;
+      return;
+    }
+    this.processing = true;
+
+    const now = Date.now();
+    this.requestTimes = this.requestTimes.filter((time) => now - time < 60000);
+
+    if (this.requestTimes.length >= this.config.maxRequestsPerMinute) {
+      const oldestRequestTime = this.requestTimes[0];
+      const delayTime = 60000 - (now - oldestRequestTime);
+      await this.delay(delayTime > 0 ? delayTime : 1000);
+      this.processQueue();
       return;
     }
 
-    this.processing = true;
+    const request = this.queue.shift();
+    if (!request) {
+      this.processing = false;
+      return;
+    }
 
-    while (this.queue.length > 0) {
-      const now = Date.now();
-
-      // Remove request times older than 1 minute
-      this.requestTimes = this.requestTimes.filter(
-        (time) => now - time < 60000,
-      );
-
-      // Check if we can make another request
-      if (this.requestTimes.length >= this.config.maxRequestsPerMinute) {
-        // Wait until we can make another request
-        const oldestRequest = Math.min(...this.requestTimes);
-        const waitTime = 60000 - (now - oldestRequest) + 100; // Add small buffer
-        await this.delay(waitTime);
-        continue;
-      }
-
-      const request = this.queue.shift()!;
-      this.requestTimes.push(now);
-
-      try {
-        const result = await this.makeRequest(request.config);
-        request.resolve(result);
-      } catch (error) {
-        if (
-          error instanceof QBOError &&
-          error.retryable &&
-          request.retryCount < this.config.maxRetries
-        ) {
-          // Retry the request
-          request.retryCount++;
-          request.timestamp = Date.now();
-          this.queue.unshift(request); // Add back to front of queue
-
-          // Wait before retry
-          await this.delay(
-            this.config.retryDelayMs * Math.pow(2, request.retryCount),
-          );
-        } else {
-          request.reject(error);
-        }
+    try {
+      this.requestTimes.push(Date.now());
+      // The actual request is made by the QBOApiService instance
+      const result = await (this as any).makeRequest(request.config);
+      request.resolve(result);
+    } catch (error) {
+      if (
+        error instanceof QBOError &&
+        error.isRetryable &&
+        request.retries < this.config.maxRetries
+      ) {
+        logger.warn(
+          `Retrying request. Attempt ${request.retries + 1} of ${this.config.maxRetries}.`,
+          error,
+        );
+        request.retries++;
+        this.queue.unshift(request); // Add back to the front of the queue
+        await this.delay(this.config.retryDelayMs * (request.retries + 1));
+      } else {
+        request.reject(error);
       }
     }
 
-    this.processing = false;
+    // Process next item
+    this.processQueue();
   }
 
-  /**
-   * Make actual HTTP request
-   */
+  // This method will be overridden by the QBOApiService instance
   private async makeRequest<T>(config: QBOApiConfig): Promise<T> {
-    // This will be implemented by the QBOApiService
-    throw new Error("makeRequest must be implemented by QBOApiService");
+    throw new Error("makeRequest method not implemented in RateLimiter.");
   }
 
-  /**
-   * Utility delay function
-   */
   private delay(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));
   }
 }
 
-// ============================================================================
-// MAIN QBO API SERVICE CLASS
-// ============================================================================
+// =================================================================================
+// QBO API SERVICE CLASS
+// =================================================================================
 
-/**
- * QuickBooks Online API Service
- *
- * Provides comprehensive access to QBO financial data through N8N proxy
- * with cookie-based authentication, rate limiting, and error handling.
- */
 export class QBOApiService {
   private readonly PROXY_BASE_URL: string;
   private readonly REQUEST_TIMEOUT: number;
-
   private rateLimiter: RateLimiter;
+  private accessToken: string | null = null;
+  private realmId: string | null = null;
 
   constructor(rateLimitConfig?: Partial<RateLimitConfig>) {
     logger.debug("Initializing QBOApiService...");
 
-    // Initialize configuration from environment variables with fallbacks
-    this.PROXY_BASE_URL = import.meta.env.VITE_QBO_PROXY_BASE_URL;
+    this.PROXY_BASE_URL = import.meta.env.VITE_QBO_PROXY_BASE_URL || "";
     this.REQUEST_TIMEOUT =
       Number(import.meta.env.VITE_QBO_REQUEST_TIMEOUT) || 30000;
 
-    // Validate required environment variables with helpful guidance
     if (!this.PROXY_BASE_URL) {
-      const errorMessage = [
-        "VITE_QBO_PROXY_BASE_URL environment variable is required but not set.",
-        "Please add it to your .env file:",
-        "VITE_QBO_PROXY_BASE_URL=https://your-proxy-server.com/api",
-      ].join("\n");
-
+      const errorMessage =
+        "VITE_QBO_PROXY_BASE_URL environment variable is not set.";
       logger.error(errorMessage);
-      throw new QBOError(QBOErrorType.QBO_API_ERROR, errorMessage);
+      // We don't throw here to allow instantiation, but requests will fail.
     }
 
     const defaultConfig: RateLimitConfig = {
@@ -525,467 +486,1465 @@ export class QBOApiService {
       ...rateLimitConfig,
     });
 
-    // Override the makeRequest method in rate limiter
     (this.rateLimiter as any).makeRequest = this.makeDirectRequest.bind(this);
-
     logger.info("QBOApiService initialized successfully");
   }
 
-  // ============================================================================
-  // CORE API METHODS
-  // ============================================================================
-
   /**
-   * Fetch QBO customers
+   * Sets the authentication credentials required for API calls.
+   * @param accessToken - The OAuth 2.0 access token.
+   * @param realmId - The QBO company ID.
    */
+  public setAuth(accessToken: string, realmId: string) {
+    this.accessToken = accessToken;
+    this.realmId = realmId;
+    logger.info("QBOApiService authentication tokens have been set.");
+  }
+
+  // --- PUBLIC DATA FETCHING METHODS ---
+
   async fetchCustomers(): Promise<QBOCustomer[]> {
     const config: QBOApiConfig = {
       method: "GET",
       endpoint: "v3/company/{realmId}/query",
-      params: {
-        query: "SELECT * FROM Customer MAXRESULTS 1000",
-      },
+      params: { query: "SELECT * FROM Customer" },
     };
-
-    const response =
-      await this.rateLimiter.enqueue<QBOApiResponse<QBOCustomer>>(config);
-    return this.extractQueryResults<QBOCustomer>(response, "Customer");
+    return this.rateLimiter.enqueue(config);
   }
 
-  /**
-   * Fetch company information
-   */
   async fetchCompanyInfo(): Promise<QBOCompanyInfo> {
     const config: QBOApiConfig = {
       method: "GET",
       endpoint: "v3/company/{realmId}/companyinfo/{realmId}",
     };
-
-    const response =
-      await this.rateLimiter.enqueue<QBOApiResponse<QBOCompanyInfo>>(config);
-    const companies = this.extractQueryResults<QBOCompanyInfo>(
-      response,
-      "CompanyInfo",
-    );
-
-    if (companies.length === 0) {
-      throw new QBOError(
-        QBOErrorType.QBO_API_ERROR,
-        "No company information found",
-      );
-    }
-
-    return companies[0];
+    const response = await this.rateLimiter.enqueue<any>(config);
+    return response.CompanyInfo;
   }
 
-  /**
-   * Fetch Profit & Loss report
-   */
-  async fetchProfitAndLoss(
-    customerId?: string,
-    dateRange?: DateRange,
-  ): Promise<QBOReport> {
-    const params: Record<string, string> = {
-      summarize_column_by: "Month",
-    };
-
-    if (dateRange) {
-      params.start_date = dateRange.start_date;
-      params.end_date = dateRange.end_date;
-    }
-
-    if (customerId) {
-      params.customer = customerId;
-    }
-
+  async fetchProfitAndLoss(range: DateRange): Promise<QBOReport> {
     const config: QBOApiConfig = {
       method: "GET",
       endpoint: "v3/company/{realmId}/reports/ProfitAndLoss",
-      params,
+      params: {
+        start_date: range.startDate,
+        end_date: range.endDate,
+        summarize_column_by: "Month",
+      },
     };
-
-    return await this.rateLimiter.enqueue<QBOReport>(config);
+    return this.rateLimiter.enqueue(config);
   }
 
-  /**
-   * Fetch Balance Sheet report
-   */
-  async fetchBalanceSheet(
-    customerId?: string,
-    dateRange?: DateRange,
-  ): Promise<QBOReport> {
-    const params: Record<string, string> = {
-      summarize_column_by: "Month",
-    };
-
-    if (dateRange) {
-      params.date = dateRange.end_date;
-    }
-
-    if (customerId) {
-      params.customer = customerId;
-    }
-
+  async fetchBalanceSheet(range: DateRange): Promise<QBOReport> {
     const config: QBOApiConfig = {
       method: "GET",
       endpoint: "v3/company/{realmId}/reports/BalanceSheet",
-      params,
-    };
-
-    return await this.rateLimiter.enqueue<QBOReport>(config);
-  }
-
-  /**
-   * Fetch General Ledger entries
-   */
-  async fetchGeneralLedger(
-    customerId?: string,
-    dateRange?: DateRange,
-  ): Promise<QBOJournalEntry[]> {
-    let query = "SELECT * FROM JournalEntry";
-    const conditions: string[] = [];
-
-    if (dateRange) {
-      conditions.push(`TxnDate >= '${dateRange.start_date}'`);
-      conditions.push(`TxnDate <= '${dateRange.end_date}'`);
-    }
-
-    if (conditions.length > 0) {
-      query += ` WHERE ${conditions.join(" AND ")}`;
-    }
-
-    query += " MAXRESULTS 1000";
-
-    const config: QBOApiConfig = {
-      method: "GET",
-      endpoint: "v3/company/{realmId}/query",
-      params: { query },
-    };
-
-    const response =
-      await this.rateLimiter.enqueue<QBOApiResponse<QBOJournalEntry>>(config);
-    return this.extractQueryResults<QBOJournalEntry>(response, "JournalEntry");
-  }
-
-  /**
-   * Fetch Chart of Accounts
-   */
-  async fetchChartOfAccounts(customerId?: string): Promise<QBOAccount[]> {
-    const config: QBOApiConfig = {
-      method: "GET",
-      endpoint: "v3/company/{realmId}/query",
       params: {
-        query: "SELECT * FROM Account MAXRESULTS 1000",
+        start_date: range.startDate,
+        end_date: range.endDate,
+        summarize_column_by: "Month",
       },
     };
-
-    const response =
-      await this.rateLimiter.enqueue<QBOApiResponse<QBOAccount>>(config);
-    return this.extractQueryResults<QBOAccount>(response, "Account");
+    return this.rateLimiter.enqueue(config);
   }
 
-  /**
-   * Fetch Trial Balance report
-   */
-  async fetchTrialBalance(
-    customerId?: string,
-    dateRange?: DateRange,
-  ): Promise<QBOReport> {
-    const params: Record<string, string> = {};
+  async fetchGeneralLedger(range: DateRange): Promise<QBOReport> {
+    const config: QBOApiConfig = {
+      method: "GET",
+      endpoint: "v3/company/{realmId}/reports/GeneralLedger",
+      params: {
+        start_date: range.startDate,
+        end_date: range.endDate,
+      },
+    };
+    return this.rateLimiter.enqueue(config);
+  }
 
-    if (dateRange) {
-      params.date = dateRange.end_date;
-    }
+  async fetchChartOfAccounts(): Promise<QBOAccount[]> {
+    const config: QBOApiConfig = {
+      method: "GET",
+      endpoint: "v3/company/{realmId}/query",
+      params: { query: "SELECT * FROM Account" },
+    };
+    return this.rateLimiter.enqueue(config);
+  }
 
-    if (customerId) {
-      params.customer = customerId;
-    }
+  async analyzeAllAccountTypes(): Promise<{
+    accountTypes: Record<string, string[]>;
+    totalAccounts: number;
+    accountSummary: Array<{
+      accountType: string;
+      subtypes: string[];
+      count: number;
+    }>;
+  }> {
+    logger.debug(
+      "Analyzing all account types and subtypes in the chart of accounts...",
+    );
 
+    const allAccounts = await this.fetchChartOfAccounts();
+    const accountTypes: Record<string, string[]> = {};
+
+    // Collect all unique AccountType -> AccountSubType combinations
+    allAccounts.forEach((account) => {
+      const type = account.AccountType || "Unknown";
+      const subtype = account.AccountSubType || "No Subtype";
+
+      if (!accountTypes[type]) {
+        accountTypes[type] = [];
+      }
+      if (!accountTypes[type].includes(subtype)) {
+        accountTypes[type].push(subtype);
+      }
+    });
+
+    // Create summary for logging
+    const accountSummary = Object.entries(accountTypes).map(
+      ([accountType, subtypes]) => {
+        const count = allAccounts.filter(
+          (acc) => acc.AccountType === accountType,
+        ).length;
+        return {
+          accountType,
+          subtypes,
+          count,
+        };
+      },
+    );
+
+    logger.info("Complete account type analysis:", {
+      totalAccounts: allAccounts.length,
+      uniqueAccountTypes: Object.keys(accountTypes).length,
+      accountSummary,
+    });
+
+    return {
+      accountTypes,
+      totalAccounts: allAccounts.length,
+      accountSummary,
+    };
+  }
+
+  async fetchTrialBalance(range: DateRange): Promise<QBOReport> {
     const config: QBOApiConfig = {
       method: "GET",
       endpoint: "v3/company/{realmId}/reports/TrialBalance",
-      params,
+      params: {
+        start_date: range.startDate,
+        end_date: range.endDate,
+      },
     };
-
-    return await this.rateLimiter.enqueue<QBOReport>(config);
+    return this.rateLimiter.enqueue(config);
   }
 
-  /**
-   * Fetch Bank Reconciliation report
-   */
-  async fetchBankReconciliation(
-    customerId?: string,
-    dateRange?: DateRange,
-  ): Promise<QBOReport> {
-    const params: Record<string, string> = {};
-
-    if (dateRange) {
-      params.start_date = dateRange.start_date;
-      params.end_date = dateRange.end_date;
-    }
-
-    if (customerId) {
-      params.customer = customerId;
-    }
+  async fetchTransactionList(
+    accountId: string,
+    range: DateRange,
+    clearedStatus: "all" | "reconciled" | "uncleared" | "cleared" = "all",
+    sortBy: string = "txn_date",
+  ): Promise<any> {
+    logger.debug(
+      `Fetching transaction list for account ${accountId}, cleared: ${clearedStatus}`,
+    );
 
     const config: QBOApiConfig = {
       method: "GET",
-      endpoint: "v3/company/{realmId}/reports/CashFlow",
-      params,
+      endpoint: "v3/company/{realmId}/reports/TransactionList",
+      params: {
+        account: accountId,
+        start_date: range.startDate,
+        end_date: range.endDate,
+        cleared: clearedStatus,
+        sort: sortBy,
+        minorversion: 65,
+      },
     };
-
-    return await this.rateLimiter.enqueue<QBOReport>(config);
+    return this.rateLimiter.enqueue(config);
   }
 
-  /**
-   * Fetch Accounts Receivable Aging reports (Summary & Detail)
-   */
-  async fetchARAgingReports(
-    customerId?: string,
-  ): Promise<{ summary: QBOAgingReport; detail: QBOAgingReport }> {
-    const baseParams: Record<string, string> = {};
-
-    if (customerId) {
-      baseParams.customer = customerId;
-    }
-
-    const summaryConfig: QBOApiConfig = {
-      method: "GET",
-      endpoint: "v3/company/{realmId}/reports/AgedReceivables",
-      params: { ...baseParams, summary_columns: "true" },
-    };
-
-    const detailConfig: QBOApiConfig = {
-      method: "GET",
-      endpoint: "v3/company/{realmId}/reports/AgedReceivableDetail",
-      params: baseParams,
-    };
-
-    const [summary, detail] = await Promise.all([
-      this.rateLimiter.enqueue<QBOAgingReport>(summaryConfig),
-      this.rateLimiter.enqueue<QBOAgingReport>(detailConfig),
-    ]);
-
-    return { summary, detail };
-  }
-
-  /**
-   * Fetch Accounts Payable Aging reports (Summary & Detail)
-   */
-  async fetchAPAgingReports(
-    customerId?: string,
-  ): Promise<{ summary: QBOAgingReport; detail: QBOAgingReport }> {
-    const baseParams: Record<string, string> = {};
-
-    if (customerId) {
-      baseParams.vendor = customerId; // Note: AP uses vendor parameter
-    }
-
-    const summaryConfig: QBOApiConfig = {
-      method: "GET",
-      endpoint: "v3/company/{realmId}/reports/AgedPayables",
-      params: { ...baseParams, summary_columns: "true" },
-    };
-
-    const detailConfig: QBOApiConfig = {
-      method: "GET",
-      endpoint: "v3/company/{realmId}/reports/AgedPayableDetail",
-      params: baseParams,
-    };
-
-    const [summary, detail] = await Promise.all([
-      this.rateLimiter.enqueue<QBOAgingReport>(summaryConfig),
-      this.rateLimiter.enqueue<QBOAgingReport>(detailConfig),
-    ]);
-
-    return { summary, detail };
-  }
-
-  /**
-   * Fetch Audit Log (limited by QBO API capabilities)
-   */
-  async fetchAuditLog(
-    customerId?: string,
-    dateRange?: DateRange,
-  ): Promise<QBOAuditLogEntry[]> {
-    // Note: QBO doesn't have a direct audit log API
-    // This would typically require integration with QBO Audit Log service
-    // For now, we'll return an empty array and log a warning
-
-    console.warn(
-      "QBO Audit Log API is not directly available through standard QBO API. Consider using QBO Audit Log service separately.",
+  async fetchLatestReconciledTransactionDate(
+    accountId: string,
+  ): Promise<string | null> {
+    logger.debug(
+      `Fetching latest reconciled transaction date for account ${accountId}`,
     );
 
-    return [];
+    try {
+      const currentDate = new Date().toISOString().split("T")[0];
+      const oneYearAgo = new Date();
+      oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
+
+      const reconciledTransactions = await this.fetchTransactionList(
+        accountId,
+        {
+          startDate: oneYearAgo.toISOString().split("T")[0],
+          endDate: currentDate,
+        },
+        "reconciled",
+        "txn_date",
+      );
+
+      if (reconciledTransactions?.Rows?.Row?.length > 0) {
+        const lastRow =
+          reconciledTransactions.Rows.Row[
+            reconciledTransactions.Rows.Row.length - 1
+          ];
+        return lastRow.ColData?.[0]?.value || null; // First column typically contains the date
+      }
+
+      return null;
+    } catch (error) {
+      logger.warn(
+        `Failed to fetch latest reconciled transaction date for account ${accountId}`,
+        error,
+      );
+      return null;
+    }
   }
 
-  // ============================================================================
-  // COMPREHENSIVE DATA FETCHING
-  // ============================================================================
-
-  /**
-   * Fetch all financial data with progress tracking
-   */
-  async fetchAllFinancialData(
-    customerId?: string,
-    dateRange?: DateRange,
-    progressCallback?: ProgressCallback,
-  ): Promise<QBOFinancialReports> {
-    const steps = [
-      "Fetching company information",
-      "Fetching customers",
-      "Fetching chart of accounts",
-      "Fetching profit & loss report",
-      "Fetching balance sheet",
-      "Fetching general ledger",
-      "Fetching trial balance",
-      "Fetching bank reconciliation",
-      "Fetching A/R aging reports",
-      "Fetching A/P aging reports",
-      "Fetching audit log",
-    ];
-
-    const totalSteps = steps.length;
-    let completedSteps = 0;
-
-    const updateProgress = (stepName: string, error?: string) => {
-      if (progressCallback) {
-        progressCallback({
-          currentStep: stepName,
-          completedSteps,
-          totalSteps,
-          percentage: (completedSteps / totalSteps) * 100,
-          error,
-        });
-      }
-    };
-
-    const results: Partial<QBOFinancialReports> = {};
+  async fetchOutstandingItemsOlderThanDays(
+    accountId: string,
+    days: number = 30,
+  ): Promise<{
+    count: number;
+    totalAmount: number;
+    items: any[];
+  }> {
+    logger.debug(
+      `Fetching outstanding items older than ${days} days for account ${accountId}`,
+    );
 
     try {
-      // Step 1: Company Info
-      updateProgress(steps[0]);
-      results.companyInfo = await this.fetchCompanyInfo();
-      completedSteps++;
+      const cutoffDate = new Date();
+      cutoffDate.setDate(cutoffDate.getDate() - days);
+      const cutoffDateStr = cutoffDate.toISOString().split("T")[0];
 
-      // Step 2: Customers
-      updateProgress(steps[1]);
-      results.customers = await this.fetchCustomers();
-      completedSteps++;
-
-      // Step 3: Chart of Accounts
-      updateProgress(steps[2]);
-      results.chartOfAccounts = await this.fetchChartOfAccounts(customerId);
-      completedSteps++;
-
-      // Step 4: Profit & Loss
-      updateProgress(steps[3]);
-      results.profitAndLoss = await this.fetchProfitAndLoss(
-        customerId,
-        dateRange,
+      const unclearedTransactions = await this.fetchTransactionList(
+        accountId,
+        { startDate: "1900-01-01", endDate: cutoffDateStr },
+        "uncleared",
       );
-      completedSteps++;
 
-      // Step 5: Balance Sheet
-      updateProgress(steps[4]);
-      results.balanceSheet = await this.fetchBalanceSheet(
-        customerId,
-        dateRange,
-      );
-      completedSteps++;
+      const items = unclearedTransactions?.Rows?.Row || [];
+      let totalAmount = 0;
 
-      // Step 6: General Ledger
-      updateProgress(steps[5]);
-      results.generalLedger = await this.fetchGeneralLedger(
-        customerId,
-        dateRange,
-      );
-      completedSteps++;
+      // Calculate total amount from uncleared transactions
+      items.forEach((row: any) => {
+        const amountCol = row.ColData?.find(
+          (col: any) =>
+            typeof col.value === "string" &&
+            (col.value.includes("$") || /^-?\d+\.?\d*$/.test(col.value)),
+        );
+        if (amountCol) {
+          const amount = parseFloat(amountCol.value.replace(/[$,]/g, ""));
+          if (!isNaN(amount)) {
+            totalAmount += amount;
+          }
+        }
+      });
 
-      // Step 7: Trial Balance
-      updateProgress(steps[6]);
-      results.trialBalance = await this.fetchTrialBalance(
-        customerId,
-        dateRange,
-      );
-      completedSteps++;
-
-      // Step 8: Bank Reconciliation
-      updateProgress(steps[7]);
-      results.bankReconciliation = await this.fetchBankReconciliation(
-        customerId,
-        dateRange,
-      );
-      completedSteps++;
-
-      // Step 9: A/R Aging
-      updateProgress(steps[8]);
-      const arAging = await this.fetchARAgingReports(customerId);
-      results.arAgingSummary = arAging.summary;
-      results.arAgingDetail = arAging.detail;
-      completedSteps++;
-
-      // Step 10: A/P Aging
-      updateProgress(steps[9]);
-      const apAging = await this.fetchAPAgingReports(customerId);
-      results.apAgingSummary = apAging.summary;
-      results.apAgingDetail = apAging.detail;
-      completedSteps++;
-
-      // Step 11: Audit Log
-      updateProgress(steps[10]);
-      results.auditLog = await this.fetchAuditLog(customerId, dateRange);
-      completedSteps++;
-
-      // Final progress update
-      updateProgress("Data fetching completed");
-
-      return results as QBOFinancialReports;
+      return {
+        count: items.length,
+        totalAmount,
+        items,
+      };
     } catch (error) {
-      const errorMessage =
-        error instanceof Error ? error.message : "Unknown error occurred";
-      updateProgress(steps[completedSteps] || "Unknown step", errorMessage);
+      logger.warn(
+        `Failed to fetch outstanding items for account ${accountId}`,
+        error,
+      );
+      return { count: 0, totalAmount: 0, items: [] };
+    }
+  }
+
+  async calculateUnreconciledDifference(
+    accountId: string,
+    range: DateRange,
+  ): Promise<number> {
+    logger.debug(
+      `Calculating unreconciled difference for account ${accountId}`,
+    );
+
+    try {
+      const unclearedTransactions = await this.fetchTransactionList(
+        accountId,
+        range,
+        "uncleared",
+      );
+
+      let netUncleared = 0;
+      const items = unclearedTransactions?.Rows?.Row || [];
+
+      items.forEach((row: any) => {
+        const amountCol = row.ColData?.find(
+          (col: any) =>
+            typeof col.value === "string" &&
+            (col.value.includes("$") || /^-?\d+\.?\d*$/.test(col.value)),
+        );
+        if (amountCol) {
+          const amount = parseFloat(amountCol.value.replace(/[$,]/g, ""));
+          if (!isNaN(amount)) {
+            netUncleared += amount;
+          }
+        }
+      });
+
+      return Math.abs(netUncleared);
+    } catch (error) {
+      logger.warn(
+        `Failed to calculate unreconciled difference for account ${accountId}`,
+        error,
+      );
+      return 0;
+    }
+  }
+
+  async assessSingleAccountReconciliation(
+    accountId: string,
+    accountName: string,
+  ): Promise<{
+    accountId: string;
+    accountName: string;
+    lastReconciledDate: string | null;
+    daysSinceLastReconciliation: number | null;
+    unreconciledDifference: number;
+    outstandingItems: {
+      thirtyDays: { count: number; totalAmount: number };
+      sixtyDays: { count: number; totalAmount: number };
+      ninetyDays: { count: number; totalAmount: number };
+    };
+  }> {
+    logger.debug(
+      `Collecting reconciliation data for account: ${accountName} (${accountId})`,
+    );
+
+    try {
+      const range = QBOApiService.createThreeMonthRange();
+
+      // Fetch all required data in parallel
+      const [
+        lastReconciledDate,
+        unreconciledDifference,
+        outstanding30,
+        outstanding60,
+        outstanding90,
+      ] = await Promise.all([
+        this.fetchLatestReconciledTransactionDate(accountId),
+        this.calculateUnreconciledDifference(accountId, range),
+        this.fetchOutstandingItemsOlderThanDays(accountId, 30),
+        this.fetchOutstandingItemsOlderThanDays(accountId, 60),
+        this.fetchOutstandingItemsOlderThanDays(accountId, 90),
+      ]);
+
+      // Calculate days since last reconciliation for LLM analysis
+      let daysSinceLastReconciliation: number | null = null;
+      if (lastReconciledDate) {
+        daysSinceLastReconciliation = Math.floor(
+          (Date.now() - new Date(lastReconciledDate).getTime()) /
+            (1000 * 60 * 60 * 24),
+        );
+      }
+
+      return {
+        accountId,
+        accountName,
+        lastReconciledDate,
+        daysSinceLastReconciliation,
+        unreconciledDifference,
+        outstandingItems: {
+          thirtyDays: {
+            count: outstanding30.count,
+            totalAmount: outstanding30.totalAmount,
+          },
+          sixtyDays: {
+            count: outstanding60.count,
+            totalAmount: outstanding60.totalAmount,
+          },
+          ninetyDays: {
+            count: outstanding90.count,
+            totalAmount: outstanding90.totalAmount,
+          },
+        },
+      };
+    } catch (error) {
+      logger.error(
+        `Failed to collect reconciliation data for account ${accountName}`,
+        error,
+      );
+      return {
+        accountId,
+        accountName,
+        lastReconciledDate: null,
+        daysSinceLastReconciliation: null,
+        unreconciledDifference: 0,
+        outstandingItems: {
+          thirtyDays: { count: 0, totalAmount: 0 },
+          sixtyDays: { count: 0, totalAmount: 0 },
+          ninetyDays: { count: 0, totalAmount: 0 },
+        },
+      };
+    }
+  }
+
+  async assessAllAccountsReconciliation(
+    onProgress?: ProgressCallback,
+  ): Promise<{
+    assessments: any[];
+    criticalAccounts: number;
+    totalAccounts: number;
+  }> {
+    logger.info(
+      "Starting comprehensive reconciliation assessment for all accounts",
+    );
+
+    try {
+      const allAccounts = await this.fetchChartOfAccounts();
+      const assessments: any[] = [];
+      let completed = 0;
+
+      for (const account of allAccounts) {
+        if (account.Active) {
+          const assessment = await this.assessSingleAccountReconciliation(
+            account.Id,
+            account.Name,
+          );
+          assessments.push(assessment);
+        }
+
+        completed++;
+        if (onProgress) {
+          onProgress(completed / allAccounts.length);
+        }
+      }
+
+      logger.info(
+        `Reconciliation data collection completed for ${assessments.length} accounts`,
+      );
+
+      return {
+        assessments,
+        criticalAccounts: assessments.filter((a) => a.status === "critical")
+          .length,
+        totalAccounts: assessments.length,
+      };
+    } catch (error) {
+      logger.error("Failed to complete reconciliation assessment", error);
       throw error;
     }
   }
 
-  // ============================================================================
-  // UTILITY AND HELPER METHODS
-  // ============================================================================
+  async fetchOpeningBalanceEquity(): Promise<{
+    balance: number;
+    accountExists: boolean;
+    accountId?: string;
+    lastModified?: string;
+  }> {
+    logger.debug("Fetching Opening Balance Equity account information");
+
+    try {
+      const allAccounts = await this.fetchChartOfAccounts();
+      const obeAccount = allAccounts.find(
+        (account) =>
+          account.Name.toLowerCase().includes("opening balance equity") ||
+          account.AccountSubType === "OpeningBalanceEquity",
+      );
+
+      if (!obeAccount) {
+        return {
+          balance: 0,
+          accountExists: false,
+        };
+      }
+
+      return {
+        balance: obeAccount.CurrentBalance || 0,
+        accountExists: true,
+        accountId: obeAccount.Id,
+        lastModified: obeAccount.MetaData?.LastUpdatedTime,
+      };
+    } catch (error) {
+      logger.warn("Failed to fetch Opening Balance Equity data", error);
+      return {
+        balance: 0,
+        accountExists: false,
+      };
+    }
+  }
+
+  async fetchUndepositedFundsAnalysis(): Promise<{
+    balance: number;
+    accountExists: boolean;
+    accountId?: string;
+    agingAnalysis: {
+      current: number;
+      over30Days: number;
+      over60Days: number;
+      over90Days: number;
+    };
+    transactionCount: number;
+  }> {
+    logger.debug("Analyzing Undeposited Funds account");
+
+    try {
+      const allAccounts = await this.fetchChartOfAccounts();
+      const undepositedAccount = allAccounts.find(
+        (account) =>
+          account.Name.toLowerCase().includes("undeposited funds") ||
+          account.AccountSubType === "UndepositedFunds",
+      );
+
+      if (!undepositedAccount) {
+        return {
+          balance: 0,
+          accountExists: false,
+          agingAnalysis: {
+            current: 0,
+            over30Days: 0,
+            over60Days: 0,
+            over90Days: 0,
+          },
+          transactionCount: 0,
+        };
+      }
+
+      // Analyze aging of undeposited funds
+      const range = QBOApiService.createThreeMonthRange();
+      const transactions = await this.fetchTransactionList(
+        undepositedAccount.Id,
+        range,
+        "all",
+      );
+
+      const agingAnalysis = {
+        current: 0,
+        over30Days: 0,
+        over60Days: 0,
+        over90Days: 0,
+      };
+
+      const transactionItems = transactions?.Rows?.Row || [];
+
+      transactionItems.forEach((row: any) => {
+        const dateCol = row.ColData?.[0]?.value;
+        const amountCol = row.ColData?.find(
+          (col: any) =>
+            typeof col.value === "string" &&
+            (col.value.includes("$") || /^-?\d+\.?\d*$/.test(col.value)),
+        );
+
+        if (dateCol && amountCol) {
+          const txnDate = new Date(dateCol);
+          const amount = Math.abs(
+            parseFloat(amountCol.value.replace(/[$,]/g, "")) || 0,
+          );
+          const daysOld = Math.floor(
+            (Date.now() - txnDate.getTime()) / (1000 * 60 * 60 * 24),
+          );
+
+          if (daysOld <= 30) {
+            agingAnalysis.current += amount;
+          } else if (daysOld <= 60) {
+            agingAnalysis.over30Days += amount;
+          } else if (daysOld <= 90) {
+            agingAnalysis.over60Days += amount;
+          } else {
+            agingAnalysis.over90Days += amount;
+          }
+        }
+      });
+
+      return {
+        balance: undepositedAccount.CurrentBalance || 0,
+        accountExists: true,
+        accountId: undepositedAccount.Id,
+        agingAnalysis,
+        transactionCount: transactionItems.length,
+      };
+    } catch (error) {
+      logger.warn("Failed to analyze Undeposited Funds", error);
+      return {
+        balance: 0,
+        accountExists: false,
+        agingAnalysis: {
+          current: 0,
+          over30Days: 0,
+          over60Days: 0,
+          over90Days: 0,
+        },
+        transactionCount: 0,
+      };
+    }
+  }
+
+  async analyzeControlAccounts(): Promise<{
+    openingBalanceEquity: any;
+    undepositedFunds: any;
+    payrollLiabilities: any[];
+    recommendations: string[];
+  }> {
+    logger.debug("Performing comprehensive control account analysis");
+
+    try {
+      const [obeData, undepositedData] = await Promise.all([
+        this.fetchOpeningBalanceEquity(),
+        this.fetchUndepositedFundsAnalysis(),
+      ]);
+
+      // Analyze payroll liability accounts
+      const allAccounts = await this.fetchChartOfAccounts();
+      const payrollAccounts = allAccounts.filter(
+        (account) =>
+          account.AccountType === "Other Current Liability" &&
+          (account.Name.toLowerCase().includes("payroll") ||
+            account.Name.toLowerCase().includes("tax") ||
+            account.AccountSubType === "PayrollTaxPayable"),
+      );
+
+      const recommendations: string[] = [];
+
+      // Generate recommendations based on raw data (no scoring)
+      if (obeData.accountExists && Math.abs(obeData.balance) > 100) {
+        recommendations.push(
+          `Opening Balance Equity has balance of $${obeData.balance.toFixed(2)} - should be zero after proper setup`,
+        );
+      } else if (!obeData.accountExists) {
+        recommendations.push(
+          "Opening Balance Equity account not found - may indicate setup issues",
+        );
+      }
+
+      if (undepositedData.accountExists) {
+        const { agingAnalysis } = undepositedData;
+        if (agingAnalysis.over90Days > 0) {
+          recommendations.push(
+            `Undeposited Funds has $${agingAnalysis.over90Days.toFixed(2)} over 90 days old - critical issue`,
+          );
+        } else if (agingAnalysis.over60Days > 0) {
+          recommendations.push(
+            `Undeposited Funds has $${agingAnalysis.over60Days.toFixed(2)} over 60 days old`,
+          );
+        } else if (agingAnalysis.over30Days > 0) {
+          recommendations.push(
+            `Undeposited Funds has $${agingAnalysis.over30Days.toFixed(2)} over 30 days old`,
+          );
+        }
+      }
+
+      // Analyze payroll liabilities (no scoring)
+      const payrollLiabilitiesWithBalance = payrollAccounts.filter(
+        (acc) => Math.abs(acc.CurrentBalance || 0) > 10,
+      );
+      if (payrollLiabilitiesWithBalance.length > 0) {
+        const totalPayrollLiability = payrollLiabilitiesWithBalance.reduce(
+          (sum, acc) => sum + Math.abs(acc.CurrentBalance || 0),
+          0,
+        );
+        if (totalPayrollLiability > 1000) {
+          recommendations.push(
+            `Payroll liabilities total $${totalPayrollLiability.toFixed(2)} - ensure timely payment`,
+          );
+        } else {
+          recommendations.push(
+            "Minor payroll liabilities present - monitor payment dates",
+          );
+        }
+      }
+
+      return {
+        openingBalanceEquity: obeData,
+        undepositedFunds: undepositedData,
+        payrollLiabilities: payrollAccounts.map((acc) => ({
+          id: acc.Id,
+          name: acc.Name,
+          balance: acc.CurrentBalance || 0,
+          subType: acc.AccountSubType,
+        })),
+        recommendations,
+      };
+    } catch (error) {
+      logger.error("Failed to analyze control accounts", error);
+      return {
+        openingBalanceEquity: { balance: 0, accountExists: false },
+        undepositedFunds: {
+          balance: 0,
+          accountExists: false,
+          agingAnalysis: {
+            current: 0,
+            over30Days: 0,
+            over60Days: 0,
+            over90Days: 0,
+          },
+          transactionCount: 0,
+        },
+        payrollLiabilities: [],
+        recommendations: [
+          "Failed to analyze control accounts - manual review required",
+        ],
+      };
+    }
+  }
+
+  async analyzeUncategorizedTransactions(): Promise<{
+    uncategorizedBalance: number;
+    uncategorizedCount: number;
+    missingVendorCustomer: number;
+    generalAccountUsage: {
+      accountName: string;
+      accountId: string;
+      transactionCount: number;
+      totalAmount: number;
+    }[];
+    recommendations: string[];
+  }> {
+    logger.debug("Analyzing transaction categorization quality");
+
+    try {
+      const allAccounts = await this.fetchChartOfAccounts();
+      const range = QBOApiService.createThreeMonthRange();
+
+      // Find common uncategorized accounts
+      const uncategorizedAccounts = allAccounts.filter(
+        (account) =>
+          account.Name.toLowerCase().includes("uncategorized") ||
+          account.Name.toLowerCase().includes("general") ||
+          account.Name.toLowerCase() === "miscellaneous" ||
+          account.AccountSubType === "OtherMiscellaneousIncome" ||
+          account.AccountSubType === "OtherMiscellaneousExpense",
+      );
+
+      let uncategorizedBalance = 0;
+      let uncategorizedCount = 0;
+      const generalAccountUsage: any[] = [];
+
+      // Analyze each uncategorized account
+      for (const account of uncategorizedAccounts) {
+        try {
+          const transactions = await this.fetchTransactionList(
+            account.Id,
+            range,
+            "all",
+          );
+          const transactionItems = transactions?.Rows?.Row || [];
+
+          let accountTotal = 0;
+          transactionItems.forEach((row: any) => {
+            const amountCol = row.ColData?.find(
+              (col: any) =>
+                typeof col.value === "string" &&
+                (col.value.includes("$") || /^-?\d+\.?\d*$/.test(col.value)),
+            );
+            if (amountCol) {
+              const amount = Math.abs(
+                parseFloat(amountCol.value.replace(/[$,]/g, "")) || 0,
+              );
+              accountTotal += amount;
+            }
+          });
+
+          if (transactionItems.length > 0) {
+            generalAccountUsage.push({
+              accountName: account.Name,
+              accountId: account.Id,
+              transactionCount: transactionItems.length,
+              totalAmount: accountTotal,
+            });
+
+            uncategorizedBalance += accountTotal;
+            uncategorizedCount += transactionItems.length;
+          }
+        } catch (error) {
+          logger.warn(`Failed to analyze account ${account.Name}`, error);
+        }
+      }
+
+      // Analyze missing vendor/customer assignments
+      let missingVendorCustomer = 0;
+      try {
+        // Check for transactions without proper vendor/customer assignment
+        const generalLedger = await this.fetchGeneralLedger(range);
+        if (generalLedger?.Rows?.Row) {
+          const transactions = generalLedger.Rows.Row;
+          missingVendorCustomer = transactions.filter((row: any) => {
+            const nameCol = row.ColData?.find(
+              (col: any, index: number) => index === 2,
+            ); // Typically name column
+            return !nameCol?.value || nameCol.value.trim() === "";
+          }).length;
+        }
+      } catch (error) {
+        logger.warn("Failed to analyze vendor/customer assignments", error);
+      }
+
+      // Generate recommendations based on raw data (no scoring)
+      const recommendations: string[] = [];
+
+      if (uncategorizedBalance > 5000) {
+        recommendations.push(
+          `High uncategorized balance of $${uncategorizedBalance.toFixed(2)} requires immediate attention`,
+        );
+      } else if (uncategorizedBalance > 1000) {
+        recommendations.push(
+          `Moderate uncategorized balance of $${uncategorizedBalance.toFixed(2)} should be categorized`,
+        );
+      } else if (uncategorizedBalance > 100) {
+        recommendations.push(
+          `Minor uncategorized balance of $${uncategorizedBalance.toFixed(2)}`,
+        );
+      }
+
+      if (uncategorizedCount > 50) {
+        recommendations.push(
+          `${uncategorizedCount} uncategorized transactions - significant categorization needed`,
+        );
+      } else if (uncategorizedCount > 20) {
+        recommendations.push(
+          `${uncategorizedCount} uncategorized transactions need attention`,
+        );
+      } else if (uncategorizedCount > 0) {
+        recommendations.push(
+          `${uncategorizedCount} transactions need categorization`,
+        );
+      }
+
+      if (missingVendorCustomer > 20) {
+        recommendations.push(
+          `${missingVendorCustomer} transactions missing vendor/customer assignment`,
+        );
+      } else if (missingVendorCustomer > 0) {
+        recommendations.push(
+          `${missingVendorCustomer} transactions need vendor/customer assignment`,
+        );
+      }
+
+      return {
+        uncategorizedBalance,
+        uncategorizedCount,
+        missingVendorCustomer,
+        generalAccountUsage,
+        recommendations,
+      };
+    } catch (error) {
+      logger.error("Failed to analyze transaction categorization", error);
+      return {
+        uncategorizedBalance: 0,
+        uncategorizedCount: 0,
+        missingVendorCustomer: 0,
+        generalAccountUsage: [],
+        recommendations: [
+          "Failed to analyze transaction categorization - manual review required",
+        ],
+      };
+    }
+  }
+
+  async analyzeChartOfAccountsIntegrity(): Promise<{
+    totalAccounts: number;
+    activeAccounts: number;
+    inactiveAccounts: number;
+    duplicateAccounts: string[];
+    unusedAccounts: {
+      accountName: string;
+      accountId: string;
+      accountType: string;
+      lastActivity?: string;
+    }[];
+    recommendations: string[];
+  }> {
+    logger.debug("Analyzing Chart of Accounts integrity");
+
+    try {
+      const allAccounts = await this.fetchChartOfAccounts();
+      const range = QBOApiService.createThreeMonthRange();
+
+      const activeAccounts = allAccounts.filter((acc) => acc.Active).length;
+      const inactiveAccounts = allAccounts.length - activeAccounts;
+
+      // Find duplicate accounts (similar names)
+      const duplicateAccounts: string[] = [];
+      const accountNames = allAccounts.map((acc) =>
+        acc.Name.toLowerCase().trim(),
+      );
+      const nameCounts = accountNames.reduce((counts: any, name) => {
+        counts[name] = (counts[name] || 0) + 1;
+        return counts;
+      }, {});
+
+      Object.entries(nameCounts).forEach(([name, count]) => {
+        if ((count as number) > 1) {
+          duplicateAccounts.push(name);
+        }
+      });
+
+      // Find unused accounts (no activity in 3 months)
+      const unusedAccounts: any[] = [];
+      for (const account of allAccounts.filter((acc) => acc.Active)) {
+        try {
+          const transactions = await this.fetchTransactionList(
+            account.Id,
+            range,
+            "all",
+          );
+          const transactionItems = transactions?.Rows?.Row || [];
+
+          if (transactionItems.length === 0) {
+            unusedAccounts.push({
+              accountName: account.Name,
+              accountId: account.Id,
+              accountType: account.AccountType,
+              lastActivity: account.MetaData?.LastUpdatedTime,
+            });
+          }
+        } catch (error) {
+          // If we can't fetch transactions, assume the account might be unused
+          if (Math.abs(account.CurrentBalance || 0) < 1) {
+            unusedAccounts.push({
+              accountName: account.Name,
+              accountId: account.Id,
+              accountType: account.AccountType,
+              lastActivity: account.MetaData?.LastUpdatedTime,
+            });
+          }
+        }
+      }
+
+      // Generate recommendations based on raw data (no scoring)
+      const recommendations: string[] = [];
+
+      const unusedPercentage = (unusedAccounts.length / activeAccounts) * 100;
+      if (unusedPercentage > 20) {
+        recommendations.push(
+          `${unusedAccounts.length} unused accounts (${unusedPercentage.toFixed(1)}%) should be reviewed`,
+        );
+      } else if (unusedPercentage > 10) {
+        recommendations.push(
+          `${unusedAccounts.length} potentially unused accounts`,
+        );
+      }
+
+      if (duplicateAccounts.length > 0) {
+        recommendations.push(
+          `${duplicateAccounts.length} duplicate account names found - consolidate similar accounts`,
+        );
+      }
+
+      const inactivePercentage = (inactiveAccounts / allAccounts.length) * 100;
+      if (inactivePercentage > 15) {
+        recommendations.push(
+          `High number of inactive accounts (${inactivePercentage.toFixed(1)}%) - consider cleanup`,
+        );
+      } else if (inactivePercentage > 10) {
+        recommendations.push(
+          "Moderate number of inactive accounts - periodic review recommended",
+        );
+      }
+
+      return {
+        totalAccounts: allAccounts.length,
+        activeAccounts,
+        inactiveAccounts,
+        duplicateAccounts,
+        unusedAccounts,
+        recommendations,
+      };
+    } catch (error) {
+      logger.error("Failed to analyze Chart of Accounts integrity", error);
+      return {
+        totalAccounts: 0,
+        activeAccounts: 0,
+        inactiveAccounts: 0,
+        duplicateAccounts: [],
+        unusedAccounts: [],
+        recommendations: [
+          "Failed to analyze Chart of Accounts - manual review required",
+        ],
+      };
+    }
+  }
+
+  async fetchARAgingReports(reportDate: string): Promise<QBOAgingReport> {
+    const config: QBOApiConfig = {
+      method: "GET",
+      endpoint: "v3/company/{realmId}/reports/AgedReceivables",
+      params: {
+        report_date: reportDate,
+      },
+    };
+    return this.rateLimiter.enqueue(config);
+  }
+
+  async fetchAPAgingReports(reportDate: string): Promise<QBOAgingReport> {
+    const config: QBOApiConfig = {
+      method: "GET",
+      endpoint: "v3/company/{realmId}/reports/AgedPayables",
+      params: {
+        report_date: reportDate,
+      },
+    };
+    return this.rateLimiter.enqueue(config);
+  }
+
+  async fetchAuditLog(range: DateRange): Promise<QBOAuditLogEntry[]> {
+    const config: QBOApiConfig = {
+      method: "GET",
+      endpoint: "v3/company/{realmId}/query",
+      params: {
+        query: `SELECT * FROM AuditLog WHERE EventDate >= '${range.startDate}' AND EventDate <= '${range.endDate}'`,
+      },
+    };
+    return this.rateLimiter.enqueue(config);
+  }
 
   /**
-   * Make direct HTTP request to N8N proxy
+   * Fetches Cash Flow Statement for methodology compliance.
    */
+  async fetchCashFlowStatement(range: DateRange): Promise<QBOReport> {
+    const config: QBOApiConfig = {
+      method: "GET",
+      endpoint: "v3/company/{realmId}/reports/CashFlow",
+      params: {
+        start_date: range.startDate,
+        end_date: range.endDate,
+        summarize_column_by: "Month",
+      },
+    };
+    return this.rateLimiter.enqueue(config);
+  }
+
+  /**
+   * Fetches Journal Entries for transaction integrity assessment.
+   */
+  async fetchJournalEntries(range: DateRange): Promise<QBOJournalEntry[]> {
+    const config: QBOApiConfig = {
+      method: "GET",
+      endpoint: "v3/company/{realmId}/query",
+      params: {
+        query: `SELECT * FROM JournalEntry WHERE TxnDate >= '${range.startDate}' AND TxnDate <= '${range.endDate}' MAXRESULTS 1000`,
+      },
+    };
+    return this.rateLimiter.enqueue(config);
+  }
+
+  /**
+   * Fetches Customer Balance Summary for A/R validation.
+   */
+  async fetchCustomerBalanceSummary(): Promise<any[]> {
+    const config: QBOApiConfig = {
+      method: "GET",
+      endpoint: "v3/company/{realmId}/reports/CustomerBalanceSummary",
+    };
+    return this.rateLimiter.enqueue(config);
+  }
+
+  /**
+   * Fetches Vendor Balance Summary for A/P validation.
+   */
+  async fetchVendorBalanceSummary(): Promise<any[]> {
+    const config: QBOApiConfig = {
+      method: "GET",
+      endpoint: "v3/company/{realmId}/reports/VendorBalanceSummary",
+    };
+    return this.rateLimiter.enqueue(config);
+  }
+
+  /**
+   * Fetches bank reconciliation reports for all bank accounts.
+   */
+  async fetchBankReconciliationReports(): Promise<any[]> {
+    try {
+      // First get all bank accounts
+      const accounts = await this.fetchChartOfAccounts();
+      const bankAccounts = accounts.filter(
+        (acc) => acc.AccountType === "Bank" && acc.Active,
+      );
+
+      const reconciliationReports = [];
+      for (const account of bankAccounts) {
+        try {
+          const config: QBOApiConfig = {
+            method: "GET",
+            endpoint: "v3/company/{realmId}/reports/TransactionList",
+            params: {
+              account: account.Id,
+              cleared: "all",
+              sort: "txn_date",
+            },
+          };
+          const report = await this.rateLimiter.enqueue(config);
+          reconciliationReports.push({
+            accountId: account.Id,
+            accountName: account.Name,
+            reconciliationData: report,
+          });
+        } catch (error) {
+          logger.warn(
+            `Failed to fetch reconciliation for account ${account.Name}`,
+            error,
+          );
+        }
+      }
+
+      return reconciliationReports;
+    } catch (error) {
+      logger.error("Failed to fetch bank reconciliation reports", error);
+      return [];
+    }
+  }
+
+  async fetchAllFinancialData(
+    range: DateRange,
+    onProgress: ProgressCallback,
+  ): Promise<QBOFinancialReports> {
+    const reports: {
+      key: keyof QBOFinancialReports;
+      fetcher: () => Promise<any>;
+    }[] = [
+      {
+        key: "profitAndLoss",
+        fetcher: () => this.fetchProfitAndLoss(range),
+      },
+      {
+        key: "balanceSheet",
+        fetcher: () => this.fetchBalanceSheet(range),
+      },
+      { key: "trialBalance", fetcher: () => this.fetchTrialBalance(range) },
+      {
+        key: "arAging",
+        fetcher: () => this.fetchARAgingReports(range.endDate),
+      },
+      {
+        key: "apAging",
+        fetcher: () => this.fetchAPAgingReports(range.endDate),
+      },
+    ];
+
+    const results: QBOFinancialReports = {};
+    let completed = 0;
+
+    await Promise.all(
+      reports.map(async (report) => {
+        try {
+          const data = await report.fetcher();
+          results[report.key] = data;
+        } catch (error) {
+          logger.error(`Failed to fetch ${report.key}`, error);
+          // Optionally, store the error in the results
+        } finally {
+          completed++;
+          onProgress(completed / reports.length);
+        }
+      }),
+    );
+
+    return results;
+  }
+
+  /**
+   * Fetches the complete data package required for comprehensive hygiene assessment.
+   * Uses 3-month data scope as recommended by the Day-30 methodology.
+   * Implements the multi-dimensional quality framework as per CPA methodology.
+   */
+  async fetchHygieneAssessmentData(onProgress?: ProgressCallback): Promise<{
+    // Core financial statements
+    profitAndLoss?: any;
+    balanceSheet?: any;
+    cashFlowStatement?: any;
+    // Detailed transaction data
+    generalLedger?: any;
+    chartOfAccounts?: any[];
+    trialBalance?: any;
+    journalEntries?: any[];
+    // Control and reconciliation data
+    reconciliationAssessment?: QBOAllAccountsReconciliation;
+    bankReconciliationReports?: any[];
+    openingBalanceEquity?: any;
+    undepositedFunds?: any[];
+    // Aging and customer/vendor analysis
+    arAging?: any;
+    apAging?: any;
+    customerBalanceSummary?: any[];
+    vendorBalanceSummary?: any[];
+    // Audit and compliance data
+    auditLog?: any[];
+    accountTypesAnalysis?: any;
+    userAccessLogs?: any[];
+    // Analysis results (raw data, no pre-calculated scores)
+    controlAccountAnalysis?: any;
+    uncategorizedAnalysis?: any;
+    chartIntegrityAnalysis?: any;
+    // Metadata
+    datePeriod: DateRange;
+    assessmentTimestamp: string;
+    dataCompletenessScore: number;
+  }> {
+    logger.info("Fetching hygiene assessment data package (3-month scope)");
+
+    const range = QBOApiService.createThreeMonthRange();
+    const reports = [
+      // Core Financial Statements (Critical for methodology compliance)
+      {
+        key: "profitAndLoss",
+        fetcher: () => this.fetchProfitAndLoss(range),
+        description: "Profit & Loss Statement",
+        critical: true,
+      },
+      {
+        key: "balanceSheet",
+        fetcher: () => this.fetchBalanceSheet(range),
+        description: "Balance Sheet",
+        critical: true,
+      },
+      {
+        key: "trialBalance",
+        fetcher: () => this.fetchTrialBalance(range),
+        description: "Trial Balance",
+        critical: true,
+      },
+      // Chart of Accounts and Structure Analysis
+      {
+        key: "chartOfAccounts",
+        fetcher: () => this.fetchChartOfAccounts(),
+        description: "Chart of Accounts",
+        critical: true,
+      },
+      {
+        key: "accountTypesAnalysis",
+        fetcher: () => this.analyzeAllAccountTypes(),
+        description: "Account Types Analysis",
+        critical: false,
+      },
+      // Transaction-Level Data
+      {
+        key: "generalLedger",
+        fetcher: () => this.fetchGeneralLedger(range),
+        description: "General Ledger",
+        critical: true,
+      },
+      // Aging and Customer/Vendor Analysis
+      {
+        key: "arAging",
+        fetcher: () => this.fetchARAgingReports(range.endDate),
+        description: "A/R Aging Report",
+        critical: true,
+      },
+      {
+        key: "apAging",
+        fetcher: () => this.fetchAPAgingReports(range.endDate),
+        description: "A/P Aging Report",
+        critical: true,
+      },
+      // Control and Audit Data
+      {
+        key: "auditLog",
+        fetcher: () => this.fetchAuditLog(range),
+        description: "Audit Log",
+        critical: false,
+      },
+      // Additional reports required by methodology
+      {
+        key: "cashFlowStatement",
+        fetcher: () => this.fetchCashFlowStatement(range),
+        description: "Cash Flow Statement",
+        critical: true,
+      },
+      {
+        key: "journalEntries",
+        fetcher: () => this.fetchJournalEntries(range),
+        description: "Journal Entries",
+        critical: false,
+      },
+      {
+        key: "customerBalanceSummary",
+        fetcher: () => this.fetchCustomerBalanceSummary(),
+        description: "Customer Balance Summary",
+        critical: false,
+      },
+      {
+        key: "vendorBalanceSummary",
+        fetcher: () => this.fetchVendorBalanceSummary(),
+        description: "Vendor Balance Summary",
+        critical: false,
+      },
+      {
+        key: "bankReconciliationReports",
+        fetcher: () => this.fetchBankReconciliationReports(),
+        description: "Bank Reconciliation Reports",
+        critical: true,
+      },
+      // Analysis methods for comprehensive data
+      {
+        key: "controlAccountAnalysis",
+        fetcher: () => this.analyzeControlAccounts(),
+        description: "Control Account Analysis",
+        critical: true,
+      },
+      {
+        key: "uncategorizedAnalysis",
+        fetcher: () => this.analyzeUncategorizedTransactions(),
+        description: "Uncategorized Transaction Analysis",
+        critical: true,
+      },
+      {
+        key: "chartIntegrityAnalysis",
+        fetcher: () => this.analyzeChartOfAccountsIntegrity(),
+        description: "Chart of Accounts Integrity Analysis",
+        critical: true,
+      },
+    ];
+
+    const results: any = {
+      datePeriod: range,
+      assessmentTimestamp: new Date().toISOString(),
+      dataCompletenessScore: 0, // Will be calculated after fetching
+    };
+
+    let completed = 0;
+    const totalReports = reports.length;
+
+    // Fetch all reports with progress tracking
+    await Promise.all(
+      reports.map(async (report) => {
+        try {
+          logger.debug(`Fetching ${report.description}...`);
+          const data = await report.fetcher();
+          results[report.key] = data;
+          logger.debug(`Successfully fetched ${report.description}`);
+        } catch (error) {
+          logger.error(`Failed to fetch ${report.description}`, error);
+          // Store the error but continue with other reports
+          results[report.key] = null;
+        } finally {
+          completed++;
+          if (onProgress) {
+            onProgress(completed / totalReports);
+          }
+        }
+      }),
+    );
+
+    // Fetch comprehensive reconciliation assessment
+    try {
+      logger.debug("Performing comprehensive reconciliation assessment...");
+
+      // Create a progress callback that accounts for reconciliation assessment
+      const reconciliationProgress = (progress: number) => {
+        const baseProgress = completed / totalReports;
+        const reconciliationWeight = 0.3; // 30% of total progress
+        if (onProgress) {
+          onProgress(baseProgress + progress * reconciliationWeight);
+        }
+      };
+
+      const reconciliationData = await this.assessAllAccountsReconciliation(
+        reconciliationProgress,
+      );
+
+      // Note: Account types analysis is now available separately in results.accountTypesAnalysis
+
+      results.reconciliationAssessment = reconciliationData;
+      logger.info("Reconciliation assessment completed successfully", {
+        totalAccounts: reconciliationData.totalAccounts,
+        criticalAccounts: reconciliationData.criticalAccounts,
+      });
+    } catch (error) {
+      logger.error("Failed to perform reconciliation assessment", error);
+      results.reconciliationAssessment = null;
+    }
+
+    try {
+      logger.debug("Attempting to fetch undeposited funds data...");
+      // results.undepositedFunds = await this.fetchUndepositedFunds();
+    } catch (error) {
+      logger.warn("Undeposited funds data not available", error);
+    }
+
+    try {
+      logger.debug("Attempting to fetch opening balance equity...");
+      // results.openingBalanceEquity = await this.fetchOpeningBalanceEquity();
+    } catch (error) {
+      logger.warn("Opening balance equity data not available", error);
+    }
+
+    // Calculate data completeness score
+    const criticalReports = reports.filter((r) => r.critical).length;
+    const availableCriticalReports = reports.filter(
+      (r) => r.critical && results[r.key] !== null,
+    ).length;
+    results.dataCompletenessScore = Math.round(
+      (availableCriticalReports / criticalReports) * 100,
+    );
+
+    logger.info("Hygiene assessment data package fetching completed", {
+      datePeriod: range,
+      totalReports: reports.length,
+      criticalReports,
+      availableReports: Object.keys(results).filter(
+        (key) =>
+          results[key] !== null &&
+          ![
+            "datePeriod",
+            "assessmentTimestamp",
+            "dataCompletenessScore",
+          ].includes(key),
+      ),
+      dataCompletenessScore: results.dataCompletenessScore,
+      reconciliationAssessmentIncluded: !!results.reconciliationAssessment,
+      criticalAccounts: results.reconciliationAssessment?.criticalAccounts || 0,
+    });
+
+    return results;
+  }
+
+  // --- PRIVATE HELPER METHODS ---
+
   private async makeDirectRequest<T>(config: QBOApiConfig): Promise<T> {
+    if (!this.accessToken || !this.realmId) {
+      throw new QBOError(
+        QBOErrorType.AUTHENTICATION_ERROR,
+        "QBO Access Token or Realm ID has not been set. Call setAuth() first.",
+      );
+    }
+
     const { method, endpoint, params, data } = config;
 
     try {
-      // Build proxy URL
-      const proxyUrl = `${this.PROXY_BASE_URL}/${endpoint}`;
+      const endpointWithRealm = endpoint.replace("{realmId}", this.realmId);
 
-      // Create request body for N8N proxy
-      const requestBody = {
-        method,
-        endpoint,
-        params: params || {},
-        data: data || null,
-      };
+      // Build URL with query parameters
+      let url = `${this.PROXY_BASE_URL}/${endpointWithRealm}`;
+      if (params) {
+        const urlParams = new URLSearchParams();
+        Object.entries(params).forEach(([key, value]) => {
+          if (value !== undefined && value !== null) {
+            urlParams.append(key, String(value));
+          }
+        });
+        if (urlParams.toString()) {
+          url += `?${urlParams.toString()}`;
+        }
+      }
 
-      // Make request with cookies
       const controller = new AbortController();
       const timeoutId = setTimeout(
         () => controller.abort(),
         this.REQUEST_TIMEOUT,
       );
 
-      const response = await fetch(proxyUrl, {
-        method: "POST",
-        credentials: "include", // Include HTTP-only cookies
-        headers: {
-          "Content-Type": "application/json",
-          Accept: "application/json",
-        },
-        body: JSON.stringify(requestBody),
+      // Prepare request headers and body
+      const headers: Record<string, string> = {
+        Accept: "application/json",
+        Authorization: `Bearer ${this.accessToken}`,
+      };
+
+      let requestBody: string | undefined;
+      if (method === "POST" && data) {
+        headers["Content-Type"] = "application/json";
+        requestBody = JSON.stringify(data);
+      }
+
+      const response = await fetch(url, {
+        method: method,
+        credentials: "include",
+        headers,
+        body: requestBody,
         signal: controller.signal,
       });
 
@@ -996,7 +1955,6 @@ export class QBOApiService {
       }
 
       const result = await response.json();
-      // Check for QBO API errors in response
       if (result.fault) {
         throw new QBOError(
           QBOErrorType.QBO_API_ERROR,
@@ -1005,7 +1963,8 @@ export class QBOApiService {
         );
       }
 
-      return result;
+      // Extract the relevant data from the nested structure
+      return this.extractQueryResults(result);
     } catch (error) {
       if (error instanceof Error && error.name === "AbortError") {
         throw new QBOError(
@@ -1015,11 +1974,9 @@ export class QBOApiService {
           true,
         );
       }
-
       if (error instanceof QBOError) {
         throw error;
       }
-
       if (error instanceof TypeError && error.message.includes("fetch")) {
         throw new QBOError(
           QBOErrorType.NETWORK_ERROR,
@@ -1028,7 +1985,6 @@ export class QBOApiService {
           true,
         );
       }
-
       throw new QBOError(
         QBOErrorType.UNKNOWN_ERROR,
         `Unexpected error: ${error instanceof Error ? error.message : "Unknown"}`,
@@ -1037,279 +1993,191 @@ export class QBOApiService {
     }
   }
 
-  /**
-   * Handle HTTP errors from N8N proxy
-   */
-  private async handleHttpError(response: Response): Promise<never> {
-    let errorMessage = `HTTP ${response.status}: ${response.statusText}`;
-    let errorType = QBOErrorType.QBO_API_ERROR;
-    let retryable = false;
-
+  private async handleHttpError(response: Response) {
+    let errorBody;
     try {
-      const errorBody = await response.text();
-      if (errorBody) {
-        errorMessage += ` - ${errorBody}`;
-      }
-    } catch {
-      // Ignore JSON parsing errors
+      errorBody = await response.json();
+    } catch (e) {
+      errorBody = await response.text();
     }
 
-    switch (response.status) {
-      case 401:
-        errorType = QBOErrorType.AUTH_ERROR;
-        errorMessage = "Authentication failed. Please reconnect to QuickBooks.";
-        break;
-      case 429:
-        errorType = QBOErrorType.RATE_LIMIT_ERROR;
-        errorMessage = "Rate limit exceeded. Request will be retried.";
-        retryable = true;
-        break;
-      case 500:
-      case 502:
-      case 503:
-      case 504:
-        errorType = QBOErrorType.NETWORK_ERROR;
-        errorMessage = "Server error. Request will be retried.";
-        retryable = true;
-        break;
+    const errorMessage = `HTTP Error: ${response.status} ${response.statusText}`;
+
+    if (response.status === 401) {
+      throw new QBOError(
+        QBOErrorType.AUTHENTICATION_ERROR,
+        "Authentication failed. The access token may be invalid or expired.",
+        errorBody,
+      );
     }
 
-    throw new QBOError(errorType, errorMessage, response, retryable);
-  }
-
-  /**
-   * Extract results from QBO query response
-   */
-  private extractQueryResults<T>(
-    response: QBOApiResponse<T>,
-    entityName: string,
-  ): T[] {
-    if (!response.QueryResponse) {
-      return [];
-    }
-
-    const result = response.QueryResponse[entityName];
-    return Array.isArray(result) ? result : [];
-  }
-
-  /**
-   * Format QBO API error message
-   */
-  private formatQBOError(fault: any): string {
-    if (fault.error && Array.isArray(fault.error) && fault.error.length > 0) {
-      const error = fault.error[0];
-      return `QBO API Error: ${error.Detail} (Code: ${error.code})`;
-    }
-
-    return "Unknown QBO API error";
-  }
-
-  /**
-   * Validate date range format
-   */
-  public static validateDateRange(dateRange: DateRange): boolean {
-    const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
-
-    if (
-      !dateRegex.test(dateRange.start_date) ||
-      !dateRegex.test(dateRange.end_date)
-    ) {
-      return false;
-    }
-
-    const startDate = new Date(dateRange.start_date);
-    const endDate = new Date(dateRange.end_date);
-
-    return (
-      startDate <= endDate &&
-      !isNaN(startDate.getTime()) &&
-      !isNaN(endDate.getTime())
+    throw new QBOError(
+      QBOErrorType.QBO_API_ERROR,
+      errorMessage,
+      errorBody,
+      response.status >= 500, // Retry on server errors
     );
   }
 
-  /**
-   * Create date range for common periods
-   */
+  private extractQueryResults(data: any): any {
+    if (data && data.QueryResponse) {
+      // Find the first key in QueryResponse that is an array (e.g., "Customer", "Account")
+      const entityKey = Object.keys(data.QueryResponse).find((key) =>
+        Array.isArray(data.QueryResponse[key]),
+      );
+      return entityKey ? data.QueryResponse[entityKey] : data.QueryResponse;
+    }
+    return data;
+  }
+
+  private formatQBOError(fault: any): string {
+    if (fault && fault.Error && fault.Error.length > 0) {
+      const error = fault.Error[0];
+      return `QBO API Error: ${error.Message} (Code: ${error.code})`;
+    }
+    return "An unknown QBO API error occurred.";
+  }
+
+  public static validateDateRange(range: DateRange): boolean {
+    const start = new Date(range.startDate);
+    const end = new Date(range.endDate);
+    return !isNaN(start.getTime()) && !isNaN(end.getTime()) && start <= end;
+  }
+
   public static createDateRange(
     period:
-      | "current_month"
-      | "current_quarter"
-      | "current_year"
-      | "last_month"
+      | "last_year"
       | "last_quarter"
-      | "last_year",
+      | "last_month"
+      | "three_months"
+      | "custom",
+    customRange?: { startDate: Date; endDate: Date },
   ): DateRange {
     const now = new Date();
-    const currentYear = now.getFullYear();
-    const currentMonth = now.getMonth();
+    let startDate: Date;
+    let endDate: Date;
 
     switch (period) {
-      case "current_month":
-        return {
-          start_date: `${currentYear}-${String(currentMonth + 1).padStart(2, "0")}-01`,
-          end_date: new Date(currentYear, currentMonth + 1, 0)
-            .toISOString()
-            .split("T")[0],
-        };
-
-      case "current_quarter": {
-        const quarterStart = Math.floor(currentMonth / 3) * 3;
-        return {
-          start_date: `${currentYear}-${String(quarterStart + 1).padStart(2, "0")}-01`,
-          end_date: new Date(currentYear, quarterStart + 3, 0)
-            .toISOString()
-            .split("T")[0],
-        };
-      }
-
-      case "current_year":
-        return {
-          start_date: `${currentYear}-01-01`,
-          end_date: `${currentYear}-12-31`,
-        };
-
-      case "last_month": {
-        const lastMonth = currentMonth === 0 ? 11 : currentMonth - 1;
-        const lastMonthYear =
-          currentMonth === 0 ? currentYear - 1 : currentYear;
-        return {
-          start_date: `${lastMonthYear}-${String(lastMonth + 1).padStart(2, "0")}-01`,
-          end_date: new Date(lastMonthYear, lastMonth + 1, 0)
-            .toISOString()
-            .split("T")[0],
-        };
-      }
-
-      case "last_quarter": {
-        const lastQuarterStart = Math.floor(currentMonth / 3) * 3 - 3;
-        const isLastYear = lastQuarterStart < 0;
-        const quarterStart = isLastYear
-          ? lastQuarterStart + 12
-          : lastQuarterStart;
-        const quarterYear = isLastYear ? currentYear - 1 : currentYear;
-
-        return {
-          start_date: `${quarterYear}-${String(quarterStart + 1).padStart(2, "0")}-01`,
-          end_date: new Date(quarterYear, quarterStart + 3, 0)
-            .toISOString()
-            .split("T")[0],
-        };
-      }
-
       case "last_year":
-        return {
-          start_date: `${currentYear - 1}-01-01`,
-          end_date: `${currentYear - 1}-12-31`,
-        };
-
-      default:
-        throw new Error(`Unsupported period: ${period}`);
+        startDate = new Date(now.getFullYear() - 1, 0, 1);
+        endDate = new Date(now.getFullYear() - 1, 11, 31);
+        break;
+      case "last_quarter":
+        const currentQuarter = Math.floor(now.getMonth() / 3);
+        startDate = new Date(now.getFullYear(), currentQuarter * 3 - 3, 1);
+        endDate = new Date(
+          startDate.getFullYear(),
+          startDate.getMonth() + 3,
+          0,
+        );
+        break;
+      case "last_month":
+        startDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+        endDate = new Date(now.getFullYear(), now.getMonth(), 0);
+        break;
+      case "three_months":
+        // Past 3 months for hygiene assessment
+        startDate = new Date(now.getFullYear(), now.getMonth() - 3, 1);
+        endDate = new Date(now.getFullYear(), now.getMonth(), 0);
+        break;
+      case "custom":
+        if (!customRange) {
+          throw new Error("Custom date range requires startDate and endDate.");
+        }
+        startDate = customRange.startDate;
+        endDate = customRange.endDate;
+        break;
     }
+
+    const formatDate = (date: Date) => date.toISOString().split("T")[0];
+    return {
+      startDate: formatDate(startDate),
+      endDate: formatDate(endDate),
+    };
+  }
+
+  /**
+   * Creates a 3-month date range specifically for hygiene assessment.
+   * This is the recommended data scope for Day-30 readiness evaluation.
+   */
+  public static createThreeMonthRange(): DateRange {
+    return QBOApiService.createDateRange("three_months");
   }
 }
 
-// ============================================================================
+// =================================================================================
 // EXAMPLE USAGE
-// ============================================================================
+// =================================================================================
 
 /**
- * Example usage of the QBOApiService
+ * Demonstrates how to use the QBOApiService.
+ * This is for documentation and testing purposes.
  */
-export const QBOApiServiceExample = {
-  /**
-   * Basic usage example
-   */
+class QBOApiServiceExample {
+  private qboService: QBOApiService;
+
+  constructor() {
+    this.qboService = new QBOApiService();
+    // In a real app, you would get these from your OAuth flow
+    const FAKE_ACCESS_TOKEN = "your_real_access_token";
+    const FAKE_REALM_ID = "your_real_realm_id";
+    this.qboService.setAuth(FAKE_ACCESS_TOKEN, FAKE_REALM_ID);
+  }
+
   async basicUsage() {
-    const qboService = new QBOApiService();
-
     try {
-      // Fetch company info
-      const companyInfo = await qboService.fetchCompanyInfo();
-      console.log("Company:", companyInfo.CompanyName);
+      logger.info("Fetching customers...");
+      const customers = await this.qboService.fetchCustomers();
+      logger.info(`Found ${customers.length} customers.`, customers[0]);
 
-      // Fetch customers
-      const customers = await qboService.fetchCustomers();
-      console.log(`Found ${customers.length} customers`);
-
-      // Fetch P&L for current month
-      const dateRange = QBOApiService.createDateRange("current_month");
-      const profitAndLoss = await qboService.fetchProfitAndLoss(
-        undefined,
-        dateRange,
-      );
-      console.log("P&L report fetched successfully");
+      logger.info("Fetching company info...");
+      const companyInfo = await this.qboService.fetchCompanyInfo();
+      logger.info(`Company Name: ${companyInfo.CompanyName}`);
     } catch (error) {
       if (error instanceof QBOError) {
-        console.error(`QBO Error (${error.type}):`, error.message);
-
-        if (error.type === QBOErrorType.AUTH_ERROR) {
-          // Redirect to OAuth
-          console.log("Redirecting to QuickBooks authentication...");
-        }
+        logger.error(
+          `QBO Service Error (${error.type}): ${error.message}`,
+          error.originalError,
+        );
       } else {
-        console.error("Unexpected error:", error);
+        logger.error("An unexpected error occurred", error);
       }
     }
-  },
+  }
 
-  /**
-   * Comprehensive data fetching with progress tracking
-   */
   async fetchAllDataWithProgress() {
-    const qboService = new QBOApiService();
-    const dateRange = QBOApiService.createDateRange("current_year");
-
     try {
-      const financialData = await qboService.fetchAllFinancialData(
-        undefined, // No specific customer
-        dateRange,
-        (progress) => {
-          console.log(
-            `Progress: ${progress.percentage.toFixed(1)}% - ${progress.currentStep}`,
-          );
-          if (progress.error) {
-            console.error("Step error:", progress.error);
-          }
-        },
+      const range = QBOApiService.createDateRange("last_year");
+      logger.info("Fetching all financial data for last year...", range);
+
+      const onProgress = (progress: number) => {
+        const percentage = Math.round(progress * 100);
+        logger.info(`Progress: ${percentage}%`);
+      };
+
+      const allData = await this.qboService.fetchAllFinancialData(
+        range,
+        onProgress,
       );
-
-      console.log("All financial data fetched successfully:");
-      console.log("- Company:", financialData.companyInfo.CompanyName);
-      console.log("- Customers:", financialData.customers.length);
-      console.log("- Accounts:", financialData.chartOfAccounts.length);
-      console.log("- Journal Entries:", financialData.generalLedger.length);
-
-      return financialData;
+      logger.info("Successfully fetched all financial data:", allData);
     } catch (error) {
-      console.error("Failed to fetch financial data:", error);
-      throw error;
+      logger.error("Failed to fetch all financial data", error);
     }
-  },
+  }
 
-  /**
-   * Rate limiting demonstration
-   */
   async rateLimitingExample() {
-    const qboService = new QBOApiService({
-      maxRequestsPerMinute: 10, // Lower limit for demonstration
-      retryDelayMs: 2000,
-      maxRetries: 5,
-    });
-
-    // Make multiple rapid requests
-    const promises = Array.from({ length: 15 }, (_, i) =>
-      qboService
-        .fetchCustomers()
-        .then((customers) =>
-          console.log(`Request ${i + 1}: ${customers.length} customers`),
-        )
-        .catch((error) =>
-          console.error(`Request ${i + 1} failed:`, error.message),
-        ),
+    logger.info(
+      "Demonstrating rate limiting by sending 10 requests quickly...",
     );
-
-    await Promise.allSettled(promises);
-  },
-};
-
-export default QBOApiService;
+    const requests = [];
+    for (let i = 0; i < 10; i++) {
+      requests.push(this.qboService.fetchCompanyInfo());
+    }
+    try {
+      const results = await Promise.all(requests);
+      logger.info("All 10 requests completed successfully.", results.length);
+    } catch (error) {
+      logger.error("An error occurred during the rate limiting example", error);
+    }
+  }
+}

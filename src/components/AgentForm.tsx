@@ -1,69 +1,111 @@
-import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { FileTextIcon, PersonIcon, HomeIcon, ArrowRightIcon } from '@radix-ui/react-icons';
-import { FormData } from '../App';
-import { supabase } from '../lib/supabaseConnect';
+import React, { useState } from "react";
+import { useNavigate } from "react-router-dom";
+import {
+  FileTextIcon,
+  PersonIcon,
+  HomeIcon,
+  ArrowRightIcon,
+} from "@radix-ui/react-icons";
+import { useUser } from "@clerk/clerk-react";
+import { FormData } from "../App";
+import { supabase } from "../lib/supabaseConnect";
+import logger from "../lib/logger";
 
 interface AgentFormProps {
   formData: FormData;
-  handleInputChange: (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => void;
+  handleInputChange: (
+    e: React.ChangeEvent<
+      HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement
+    >,
+  ) => void;
 }
 
 const AgentForm: React.FC<AgentFormProps> = ({
   formData,
-  handleInputChange
+  handleInputChange,
 }) => {
   const navigate = useNavigate();
+  const { user } = useUser();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
-  const handleSupabaseSubmit = async (e: React.MouseEvent<HTMLButtonElement>) => {
+  const handleSupabaseSubmit = async (
+    e: React.MouseEvent<HTMLButtonElement>,
+  ) => {
     e.preventDefault();
     setIsSubmitting(true);
     setSubmitError(null);
 
     try {
-      // Validate required fields
-      const requiredFields = ['firstName', 'lastName', 'email', 'company', 'businessType'];
-      const missingFields = requiredFields.filter(field => !formData[field as keyof FormData]);
-      
-      if (missingFields.length > 0) {
-        throw new Error(`Please fill in all required fields: ${missingFields.join(', ')}`);
+      // Validate user is authenticated
+      if (!user?.id) {
+        throw new Error(
+          "User not authenticated. Please sign in and try again.",
+        );
       }
 
-      // Insert data into Supabase
+      // Validate required fields
+      const requiredFields = [
+        "firstName",
+        "lastName",
+        "email",
+        "company",
+        "businessType",
+      ];
+      const missingFields = requiredFields.filter(
+        (field) => !formData[field as keyof FormData],
+      );
+
+      if (missingFields.length > 0) {
+        throw new Error(
+          `Please fill in all required fields: ${missingFields.join(", ")}`,
+        );
+      }
+
+      logger.info("Saving registration data for user:", user.id);
+
+      // Upsert data into Supabase (insert or update if exists)
       const { data, error } = await supabase
-        .from('user_assessments')
-        .insert([
+        .from("registration_data")
+        .upsert(
+          [
+            {
+              clerk_id: user.id, // Include clerk_id from Clerk
+              first_name: formData.firstName,
+              last_name: formData.lastName,
+              email: formData.email,
+              phone: formData.phone || null,
+              company: formData.company,
+              business_type: formData.businessType,
+              monthly_revenue: formData.monthlyRevenue || null,
+              current_software: formData.currentSoftware || null,
+              bookkeeping_challenges: formData.bookkeepingChallenges || null,
+              urgency_level: formData.urgencyLevel || null,
+              updated_at: new Date().toISOString(),
+            },
+          ],
           {
-            first_name: formData.firstName,
-            last_name: formData.lastName,
-            email: formData.email,
-            phone: formData.phone || null,
-            company: formData.company,
-            business_type: formData.businessType,
-            monthly_revenue: formData.monthlyRevenue || null,
-            current_software: formData.currentSoftware || null,
-            bookkeeping_challenges: formData.bookkeepingChallenges || null,
-            urgency_level: formData.urgencyLevel || null,
-            created_at: new Date().toISOString(),
-            status: 'pending'
-          }
-        ])
+            onConflict: "clerk_id", // Update if clerk_id already exists
+            ignoreDuplicates: false,
+          },
+        )
         .select();
 
       if (error) {
         throw error;
       }
 
-      console.log('Data successfully saved:', data);
-      
+      logger.info("Registration data successfully saved:", data);
+
       // Navigate to QBO Auth page
-      navigate('/qbo-auth');
-      
+      navigate("/qbo-auth");
     } catch (error) {
-      console.error('Error saving to Supabase:', error);
-      setSubmitError(error instanceof Error ? error.message : 'An error occurred while saving your information');
+      logger.error("Error saving to Supabase:", error);
+      setSubmitError(
+        error instanceof Error
+          ? error.message
+          : "An error occurred while saving your information",
+      );
     } finally {
       setIsSubmitting(false);
     }
@@ -74,9 +116,11 @@ const AgentForm: React.FC<AgentFormProps> = ({
       <div className="bg-white shadow-sm border-b">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center py-4">
-            <h1 className="text-2xl font-bold text-gray-900">Financial Books Assessment</h1>
-            <button 
-              onClick={() => navigate('/')}
+            <h1 className="text-2xl font-bold text-gray-900">
+              Financial Books Assessment
+            </h1>
+            <button
+              onClick={() => navigate("/")}
               className="text-gray-600 hover:text-gray-900"
             >
               ← Back to Home
@@ -88,9 +132,12 @@ const AgentForm: React.FC<AgentFormProps> = ({
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="bg-white rounded-lg shadow p-8">
           <div className="text-center mb-8">
-            <h2 className="text-3xl font-bold text-gray-900 mb-4">Let's Get Started</h2>
+            <h2 className="text-3xl font-bold text-gray-900 mb-4">
+              Let's Get Started
+            </h2>
             <p className="text-lg text-gray-600">
-              Help us understand your business so we can provide the most relevant assessment and recommendations.
+              Help us understand your business so we can provide the most
+              relevant assessment and recommendations.
             </p>
           </div>
 
@@ -110,7 +157,9 @@ const AgentForm: React.FC<AgentFormProps> = ({
               </h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">First Name *</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    First Name *
+                  </label>
                   <input
                     type="text"
                     name="firstName"
@@ -121,7 +170,9 @@ const AgentForm: React.FC<AgentFormProps> = ({
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Last Name *</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Last Name *
+                  </label>
                   <input
                     type="text"
                     name="lastName"
@@ -132,7 +183,9 @@ const AgentForm: React.FC<AgentFormProps> = ({
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Email Address *</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Email Address *
+                  </label>
                   <input
                     type="email"
                     name="email"
@@ -143,7 +196,9 @@ const AgentForm: React.FC<AgentFormProps> = ({
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Phone Number</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Phone Number
+                  </label>
                   <input
                     type="tel"
                     name="phone"
@@ -163,7 +218,9 @@ const AgentForm: React.FC<AgentFormProps> = ({
               </h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Company Name *</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Company Name *
+                  </label>
                   <input
                     type="text"
                     name="company"
@@ -174,7 +231,9 @@ const AgentForm: React.FC<AgentFormProps> = ({
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Business Type *</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Business Type *
+                  </label>
                   <select
                     name="businessType"
                     value={formData.businessType}
@@ -193,7 +252,9 @@ const AgentForm: React.FC<AgentFormProps> = ({
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Monthly Revenue Range</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Monthly Revenue Range
+                  </label>
                   <select
                     name="monthlyRevenue"
                     value={formData.monthlyRevenue}
@@ -209,7 +270,9 @@ const AgentForm: React.FC<AgentFormProps> = ({
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Current Accounting Software</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Current Accounting Software
+                  </label>
                   <select
                     name="currentSoftware"
                     value={formData.currentSoftware}
@@ -218,7 +281,9 @@ const AgentForm: React.FC<AgentFormProps> = ({
                   >
                     <option value="">Select software</option>
                     <option value="quickbooks-online">QuickBooks Online</option>
-                    <option value="quickbooks-desktop">QuickBooks Desktop</option>
+                    <option value="quickbooks-desktop">
+                      QuickBooks Desktop
+                    </option>
                     <option value="xero">Xero</option>
                     <option value="excel">Excel/Spreadsheets</option>
                     <option value="other">Other</option>
@@ -248,7 +313,9 @@ const AgentForm: React.FC<AgentFormProps> = ({
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">How urgent is this assessment?</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    How urgent is this assessment?
+                  </label>
                   <select
                     name="urgencyLevel"
                     value={formData.urgencyLevel}
@@ -256,10 +323,18 @@ const AgentForm: React.FC<AgentFormProps> = ({
                     className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
                     <option value="">Select urgency level</option>
-                    <option value="immediate">Immediate - Need results within 24 hours</option>
-                    <option value="this-week">This week - Planning for upcoming decisions</option>
-                    <option value="this-month">This month - General health check</option>
-                    <option value="planning">Planning - Future consideration</option>
+                    <option value="immediate">
+                      Immediate - Need results within 24 hours
+                    </option>
+                    <option value="this-week">
+                      This week - Planning for upcoming decisions
+                    </option>
+                    <option value="this-month">
+                      This month - General health check
+                    </option>
+                    <option value="planning">
+                      Planning - Future consideration
+                    </option>
                   </select>
                 </div>
               </div>
@@ -280,12 +355,14 @@ const AgentForm: React.FC<AgentFormProps> = ({
                   </>
                 ) : (
                   <>
-                    Continue to Assessment <ArrowRightIcon className="w-5 h-5 ml-2" />
+                    Continue to Assessment{" "}
+                    <ArrowRightIcon className="w-5 h-5 ml-2" />
                   </>
                 )}
               </button>
               <p className="text-sm text-gray-600 mt-2 text-center">
-                This information helps us provide more accurate recommendations tailored to your business.
+                This information helps us provide more accurate recommendations
+                tailored to your business.
               </p>
             </div>
           </div>

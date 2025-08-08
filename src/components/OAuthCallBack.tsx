@@ -1,7 +1,9 @@
 import React, { useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
+import { useUser } from "@clerk/clerk-react";
 import { ReloadIcon } from "@radix-ui/react-icons";
 import logger from "../lib/logger";
+import { QBOTokenService } from "../services/qboTokenService";
 
 // OAuth Configuration from environment variables
 const POST_LOGIN_REDIRECT = import.meta.env.VITE_QBO_POST_LOGIN_REDIRECT;
@@ -26,41 +28,62 @@ const OAuthCallback: React.FC<OAuthCallbackProps> = ({
 }) => {
   const navigate = useNavigate();
   const location = useLocation();
+  const { user, isLoaded } = useUser();
 
   useEffect(() => {
     logger.group("OAuth Callback Processing");
 
-    const params = new URLSearchParams(location.search);
-    const qbTokens = params.get("qb_tokens");
-    const error = params.get("error");
+    const processAuth = async () => {
+      const params = new URLSearchParams(location.search);
+      const qbTokens = params.get("qb_tokens");
+      const error = params.get("error");
 
-    logger.debug("OAuth callback - code received:", qbTokens);
-    logger.debug("OAuth callback - error received:", error);
+      logger.debug("OAuth callback - code received:", qbTokens);
+      logger.debug("OAuth callback - error received:", error);
 
-    if (error) {
-      logger.error("OAuth error:", error);
-      setError(`OAuth error: ${error}`);
-      logger.debugBreak("OAuth error occurred - check error details above");
-      logger.info("Redirecting to QBO Auth page due to error");
-    }
+      if (error) {
+        logger.error("OAuth error:", error);
+        setError(`OAuth error: ${error}`);
+        logger.debugBreak("OAuth error occurred - check error details above");
+        logger.info("Redirecting to QBO Auth page due to error");
+      }
 
-    if (qbTokens) {
-      try {
-        const decodeQbTokens = JSON.parse(decodeURIComponent(qbTokens));
-        logger.debug("Decoded QB tokens:", decodeQbTokens);
+      if (qbTokens) {
+        try {
+          if (!isLoaded || !user) {
+            logger.debug("User not loaded yet, waiting...");
+            return;
+          }
 
-        // Clear any previous errors
-        setError(null);
-        setAccessToken(decodeQbTokens.access_token);
-        setRefreshToken(decodeQbTokens.refresh_token || null);
+          const decodeQbTokens = JSON.parse(decodeURIComponent(qbTokens));
+          logger.debug("Decoded QB tokens:", decodeQbTokens);
 
-        logger.info(
-          "Successfully processed OAuth tokens, navigating to assessment",
-        );
-        navigate("/assessment");
+          // Store tokens in Supabase
+          const tokenData = {
+            access_token: decodeQbTokens.access_token,
+            refresh_token: decodeQbTokens.refresh_token || null,
+            realm_id: decodeQbTokens.realm_id,
+            token_type: decodeQbTokens.token_type || 'Bearer',
+            expires_in: decodeQbTokens.expires_in
+          };
+
+          const stored = await QBOTokenService.storeTokens(user.id, tokenData);
+        
+        if (stored) {
+          // Clear any previous errors and set state
+          setError(null);
+          setAccessToken(decodeQbTokens.access_token);
+          setRefreshToken(decodeQbTokens.refresh_token || null);
+          setRealmId(decodeQbTokens.realm_id);
+
+          logger.info("Successfully processed and stored OAuth tokens, navigating to assessment");
+          navigate("/assessment");
+        } else {
+          throw new Error("Failed to store tokens in database");
+        }
       } catch (parseError) {
-        logger.error("Failed to parse QB tokens:", parseError);
-        setError("Invalid token format received from QuickBooks");
+        logger.error("Failed to parse or store QB tokens:", parseError);
+        setError("Failed to process QuickBooks authentication");
         navigate("/qbo-auth");
       }
 
@@ -98,14 +121,16 @@ const OAuthCallback: React.FC<OAuthCallbackProps> = ({
       //     setError(`Failed to authenticate: ${err.message}`);
       //     navigate('/qbo-auth');
       //   });
-    } else {
-      logger.error("No authorization code received from QuickBooks");
-      setError("No authorization code received from QuickBooks");
-      navigate("/qbo-auth");
-    }
+      } else {
+        logger.error("No authorization code received from QuickBooks");
+        setError("No authorization code received from QuickBooks");
+        navigate("/qbo-auth");
+      }
+    };
 
+    processAuth();
     logger.groupEnd();
-  }, []);
+  }, [isLoaded, user, location.search, navigate, setAccessToken, setRefreshToken, setRealmId, setError]);
 
   return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center">
