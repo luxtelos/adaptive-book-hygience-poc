@@ -28,6 +28,10 @@ export interface WebhookResponse {
 export interface WebhookPillarData {
   reconciliation: {
     clearedColumnFound: boolean;
+    totalRowsFound: number;
+    totalTransactionsProcessed: number;
+    totalAccountsFound: number;
+    hasTransactionData: boolean;
     byAccount: Array<{
       account: string;
       outstanding_30d_count: number;
@@ -195,6 +199,19 @@ export async function fetchAllPillarsData(
       console.error('❌ Invalid webhook response structure - missing pillarData');
       console.error('Available keys:', Object.keys(webhookData || {}));
       throw new Error('Invalid webhook response structure');
+    }
+
+    // Check for transaction data processing issues
+    const reconciliation = webhookData.pillarData.reconciliation;
+    if (reconciliation && !reconciliation.hasTransactionData && reconciliation.totalRowsFound > 0) {
+      console.warn('⚠️ TransactionList data was found but not processed properly', {
+        totalRowsFound: reconciliation.totalRowsFound,
+        totalTransactionsProcessed: reconciliation.totalTransactionsProcessed,
+        clearedColumnFound: reconciliation.clearedColumnFound
+      });
+      
+      // Still proceed but log the issue for monitoring
+      console.warn('⚠️ This may affect reconciliation pillar accuracy');
     }
     
     // Log pillar data details for debugging

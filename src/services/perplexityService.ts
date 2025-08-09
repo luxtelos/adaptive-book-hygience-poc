@@ -1,5 +1,6 @@
 import { logger } from "../lib/logger";
 import { FivePillarRawData, RawDataFormatter } from "./rawDataFormatter";
+import { LLMInputFormatter } from './llmInputFormatter';
 
 /**
  * @file perplexityService.ts
@@ -138,6 +139,17 @@ export class PerplexityService {
     };
 
     logger.info("PerplexityService initialized successfully");
+  }
+
+  /**
+   * Generate health score label based on numeric score
+   */
+  private getHealthScoreLabel(score: number): string {
+    if (score >= 90) return 'EXCELLENT - Minimal cleanup required';
+    if (score >= 75) return 'GOOD - Minor adjustments needed';
+    if (score >= 60) return 'FAIR - Moderate cleanup required';
+    if (score >= 50) return 'POOR - Significant work needed';
+    return 'CRITICAL - Extensive remediation required';
   }
 
   /**
@@ -291,11 +303,19 @@ export class PerplexityService {
 
   /**
    * Parses the LLM response into a structured assessment result.
+   * Handles the new structured format from hygiene-assessment-prompt.txt while maintaining 
+   * compatibility with the existing HygieneAssessmentResult interface.
    * NOTE: This parser focuses on extracting AI insights only.
    * Actual scores should come from PillarScoringService.calculateAssessmentFromPillars()
    */
   private parseAssessmentResponse(response: string): HygieneAssessmentResult {
     try {
+      // Handle empty or null responses
+      if (!response || response.trim().length === 0) {
+        logger.warn("Empty response received from AI, returning default result");
+        return this.createDefaultAssessmentResult();
+      }
+
       // Try to extract JSON from the response if it's wrapped in markdown or other text
       const jsonMatch = response.match(/```json\s*([\s\S]*?)\s*```/) || 
                        response.match(/\{[\s\S]*\}/);
@@ -305,50 +325,264 @@ export class PerplexityService {
       // Clean up the JSON content
       jsonContent = jsonContent.trim();
       
+      // Handle cases where AI might return plain text instead of JSON
+      if (!jsonContent.startsWith('{') && !jsonContent.startsWith('[')) {
+        logger.warn("Non-JSON response received from AI, attempting to create default result");
+        return this.createDefaultAssessmentResult();
+      }
+      
       const parsed = JSON.parse(jsonContent);
       
-      // Return AI insights with placeholder scores
-      // Actual scores will be preserved from PillarScoringService calculations
-      const result: HygieneAssessmentResult = {
-        // These scores are placeholders - will be replaced with calculated scores
-        overallScore: parsed.overallScore || 0,
-        pillarScores: {
-          reconciliation: parsed.pillarScores?.reconciliation || 0,
-          coaIntegrity: parsed.pillarScores?.coaIntegrity || 0,
-          categorization: parsed.pillarScores?.categorization || 0,
-          controlAccount: parsed.pillarScores?.controlAccount || 0,
-          aging: parsed.pillarScores?.aging || 0
-        },
-        readinessStatus: parsed.readinessStatus || "ADDITIONAL_CLEANUP_REQUIRED",
-        // AI-generated insights and recommendations
-        businessOwnerSummary: {
-          healthScore: parsed.businessOwnerSummary?.healthScore || "Assessment in progress",
-          whatThisMeans: parsed.businessOwnerSummary?.whatThisMeans || "Analyzing your financial data...",
-          keyFindings: parsed.businessOwnerSummary?.keyFindings || [],
-          nextSteps: parsed.businessOwnerSummary?.nextSteps || []
-        },
-        bookkeeperReport: {
-          criticalIssues: parsed.bookkeeperReport?.criticalIssues || [],
-          recommendedImprovements: parsed.bookkeeperReport?.recommendedImprovements || [],
-          ongoingMaintenance: parsed.bookkeeperReport?.ongoingMaintenance || []
-        },
-        assessmentMetadata: {
-          assessmentDate: new Date().toISOString().split('T')[0],
-          dataPeriod: parsed.assessmentMetadata?.dataPeriod || "Unknown",
-          scoringModel: "Day-30 Readiness Framework with AI Enhancement",
-          limitations: parsed.assessmentMetadata?.limitations
-        }
-      };
-
-      return result;
+      // Validate that we have a proper object
+      if (!parsed || typeof parsed !== 'object') {
+        logger.warn("Invalid JSON structure received from AI, using default result");
+        return this.createDefaultAssessmentResult();
+      }
+      
+      // Handle the new structured format from hygiene-assessment-prompt.txt
+      const isNewFormat = parsed.section1_executiveSummary || parsed.section2_detailedResults || 
+                         parsed.section3_technicalRemediation || parsed.section4_scoringTransparency;
+      
+      if (isNewFormat) {
+        return this.parseNewStructuredFormat(parsed);
+      } else {
+        // Fallback to legacy format parsing
+        return this.parseLegacyFormat(parsed);
+      }
     } catch (error) {
-      logger.error("Failed to parse LLM assessment response", { response, error });
-      throw new PerplexityError(
-        "Unable to parse assessment results from AI response",
-        undefined,
-        error
-      );
+      logger.error("Failed to parse LLM assessment response", { 
+        response: response.substring(0, 500) + (response.length > 500 ? '...' : ''), 
+        error 
+      });
+      
+      // Return a default result instead of throwing to maintain service availability
+      logger.info("Returning default assessment result due to parsing failure");
+      return this.createDefaultAssessmentResult();
     }
+  }
+
+  /**
+   * Creates a default assessment result for cases where AI response cannot be parsed
+   */
+  private createDefaultAssessmentResult(): HygieneAssessmentResult {
+    return {
+      overallScore: 0,
+      pillarScores: {
+        reconciliation: 0,
+        coaIntegrity: 0,
+        categorization: 0,
+        controlAccount: 0,
+        aging: 0
+      },
+      readinessStatus: "ADDITIONAL_CLEANUP_REQUIRED",
+      businessOwnerSummary: {
+        healthScore: "0/100 - Assessment Incomplete",
+        whatThisMeans: "Unable to complete the assessment due to data processing issues. Please try again or contact support.",
+        keyFindings: ["Assessment could not be completed"],
+        nextSteps: ["Please retry the assessment", "Contact support if issues persist"]
+      },
+      bookkeeperReport: {
+        criticalIssues: [],
+        recommendedImprovements: ["Assessment needs to be re-run"],
+        ongoingMaintenance: []
+      },
+      assessmentMetadata: {
+        assessmentDate: new Date().toISOString().split('T')[0],
+        dataPeriod: "Unknown",
+        scoringModel: "Day-30 Readiness Framework",
+        limitations: ["Assessment could not be completed due to parsing errors"]
+      }
+    };
+  }
+
+  /**
+   * Parses the new structured format as defined in hygiene-assessment-prompt.txt
+   */
+  private parseNewStructuredFormat(parsed: any): HygieneAssessmentResult {
+    try {
+      // Extract basic scores and status with validation
+      const overallScore = this.validateScore(parsed.overallScore);
+      const pillarScores = {
+        reconciliation: this.validateScore(parsed.pillarScores?.reconciliation),
+        coaIntegrity: this.validateScore(parsed.pillarScores?.coaIntegrity),
+        categorization: this.validateScore(parsed.pillarScores?.categorization),
+        controlAccount: this.validateScore(parsed.pillarScores?.controlAccounts), // Note: mapping controlAccounts to controlAccount
+        aging: this.validateScore(parsed.pillarScores?.arApValidity) // Note: mapping arApValidity to aging
+      };
+    
+    // Map readiness status to expected enum values
+    let readinessStatus: "READY_FOR_MONTHLY_OPERATIONS" | "MINOR_FIXES_NEEDED" | "ADDITIONAL_CLEANUP_REQUIRED";
+    const rawStatus = parsed.readinessStatus || "";
+    if (rawStatus.includes("READY FOR MONTHLY OPERATIONS")) {
+      readinessStatus = "READY_FOR_MONTHLY_OPERATIONS";
+    } else if (rawStatus.includes("MINOR FIXES") || rawStatus.includes("NEEDS CLEANUP")) {
+      readinessStatus = "MINOR_FIXES_NEEDED";
+    } else {
+      readinessStatus = "ADDITIONAL_CLEANUP_REQUIRED";
+    }
+
+    // Extract Section 1: Executive Summary (Business Owner)
+    const section1 = parsed.section1_executiveSummary || {};
+    const businessOwnerSummary = {
+      healthScore: section1.healthScore || this.getHealthScoreLabel(overallScore),
+      whatThisMeans: section1.whatThisMeans || 
+        `Your financial books scored ${overallScore}/100. ${
+          overallScore >= 75 
+            ? 'Your books are in good shape with minor improvements needed.' 
+            : overallScore >= 50
+              ? 'Your books need moderate attention to improve accuracy and compliance.'
+              : 'Your books require significant remediation work before they are audit-ready.'
+        }`,
+      keyFindings: Array.isArray(section1.keyFindings) ? section1.keyFindings : [],
+      nextSteps: Array.isArray(section1.recommendedNextSteps) ? section1.recommendedNextSteps : []
+    };
+
+    // Extract Section 2: Detailed Results (Optional pillar breakdown info)
+    const section2 = parsed.section2_detailedResults || {};
+    // This section provides additional context but doesn't change the main structure
+
+    // Extract Section 3: Technical Remediation (Bookkeeper)
+    const section3 = parsed.section3_technicalRemediation || {};
+    const criticalIssues = Array.isArray(section3.criticalIssues) ? 
+      section3.criticalIssues.map((issue: any, index: number) => ({
+        priority: issue.priority || (index + 1),
+        pillar: this.mapIssueToPillar(issue.issueDescription || issue.problem || "Unknown"),
+        issue: issue.issueDescription || issue.problem || "Critical issue identified",
+        qboLocation: issue.qboLocation || "QuickBooks Online",
+        fixSteps: issue.fixSteps || "Contact your bookkeeper for detailed remediation steps",
+        estimatedTime: issue.estimatedTime || "To be determined"
+      })) : [];
+
+    // Convert recommended improvements to string array format
+    const recommendedImprovements = Array.isArray(section3.recommendedImprovements) ?
+      section3.recommendedImprovements.map((item: any) => 
+        typeof item === 'string' ? item : 
+        `${item.area || 'General'}: ${item.description || item.task || 'Improvement recommended'}`
+      ) : [];
+
+    // Convert ongoing maintenance to string array format  
+    const ongoingMaintenance = Array.isArray(section3.ongoingMaintenance) ?
+      section3.ongoingMaintenance.map((item: any) =>
+        typeof item === 'string' ? item :
+        `${item.frequency || 'Regular'}: ${item.task || 'Maintenance task'} (${item.qboPath || 'QuickBooks Online'})`
+      ) : [];
+
+    // Extract Section 4: Scoring Transparency
+    const section4 = parsed.section4_scoringTransparency || {};
+    const assessmentMetadata = {
+      assessmentDate: section4.assessmentDate || new Date().toISOString().split('T')[0],
+      dataPeriod: section4.dataPeriodAnalyzed || "Current Period",
+      scoringModel: section4.scoringModel || "Day-30 Readiness Framework",
+      limitations: Array.isArray(section4.limitations) ? section4.limitations : undefined
+    };
+
+    const result: HygieneAssessmentResult = {
+      overallScore,
+      pillarScores,
+      readinessStatus,
+      businessOwnerSummary,
+      bookkeeperReport: {
+        criticalIssues,
+        recommendedImprovements,
+        ongoingMaintenance
+      },
+      assessmentMetadata
+    };
+
+    return result;
+    } catch (error) {
+      logger.error("Error parsing new structured format, falling back to default", error);
+      return this.createDefaultAssessmentResult();
+    }
+  }
+
+  /**
+   * Fallback parser for legacy format responses
+   */
+  private parseLegacyFormat(parsed: any): HygieneAssessmentResult {
+    // Return AI insights with placeholder scores
+    // Actual scores will be preserved from PillarScoringService calculations
+    const result: HygieneAssessmentResult = {
+      // These scores are placeholders - will be replaced with calculated scores
+      overallScore: parsed.overallScore || 0,
+      pillarScores: {
+        reconciliation: parsed.pillarScores?.reconciliation || 0,
+        coaIntegrity: parsed.pillarScores?.coaIntegrity || 0,
+        categorization: parsed.pillarScores?.categorization || 0,
+        controlAccount: parsed.pillarScores?.controlAccount || 0,
+        aging: parsed.pillarScores?.aging || 0
+      },
+      readinessStatus: parsed.readinessStatus || "ADDITIONAL_CLEANUP_REQUIRED",
+      // AI-generated insights and recommendations
+      businessOwnerSummary: {
+        healthScore: parsed.businessOwnerSummary?.healthScore || this.getHealthScoreLabel(parsed.overallScore || 0),
+        whatThisMeans: parsed.businessOwnerSummary?.whatThisMeans || 
+          `Your financial books scored ${parsed.overallScore || 0}/100. ${
+            (parsed.overallScore || 0) >= 75 
+              ? 'Your books are in good shape with minor improvements needed.' 
+              : (parsed.overallScore || 0) >= 50
+                ? 'Your books need moderate attention to improve accuracy and compliance.'
+                : 'Your books require significant remediation work before they are audit-ready.'
+          }`,
+        keyFindings: parsed.businessOwnerSummary?.keyFindings || [],
+        nextSteps: parsed.businessOwnerSummary?.nextSteps || []
+      },
+      bookkeeperReport: {
+        criticalIssues: parsed.bookkeeperReport?.criticalIssues || [],
+        recommendedImprovements: parsed.bookkeeperReport?.recommendedImprovements || [],
+        ongoingMaintenance: parsed.bookkeeperReport?.ongoingMaintenance || []
+      },
+      assessmentMetadata: {
+        assessmentDate: new Date().toISOString().split('T')[0],
+        dataPeriod: parsed.assessmentMetadata?.dataPeriod || "Unknown",
+        scoringModel: "Day-30 Readiness Framework with AI Enhancement",
+        limitations: parsed.assessmentMetadata?.limitations
+      }
+    };
+
+    return result;
+  }
+
+  /**
+   * Maps an issue description to the appropriate pillar name
+   */
+  private mapIssueToPillar(issueDescription: string): string {
+    const issue = issueDescription.toLowerCase();
+    
+    if (issue.includes('reconcil') || issue.includes('bank') || issue.includes('credit card')) {
+      return 'Bank & Credit Card Matching';
+    }
+    if (issue.includes('chart of accounts') || issue.includes('coa') || issue.includes('account structure')) {
+      return 'Money Organization System';
+    }
+    if (issue.includes('categor') || issue.includes('uncategor') || issue.includes('transaction')) {
+      return 'Transaction Categorization';
+    }
+    if (issue.includes('control') || issue.includes('opening balance') || issue.includes('undeposited')) {
+      return 'Control Account Accuracy';
+    }
+    if (issue.includes('receivable') || issue.includes('payable') || issue.includes('aging') || 
+        issue.includes('customer') || issue.includes('vendor')) {
+      return 'Customer/Vendor Balances';
+    }
+    
+    return 'General';
+  }
+
+  /**
+   * Validates and normalizes score values to ensure they're within 0-100 range
+   */
+  private validateScore(score: any): number {
+    if (typeof score === 'number' && !isNaN(score)) {
+      return Math.max(0, Math.min(100, Math.round(score)));
+    }
+    if (typeof score === 'string') {
+      const parsed = parseFloat(score);
+      if (!isNaN(parsed)) {
+        return Math.max(0, Math.min(100, Math.round(parsed)));
+      }
+    }
+    return 0; // Default to 0 for invalid scores
   }
 
   /**
@@ -364,10 +598,13 @@ export class PerplexityService {
       // Load the assessment prompt
       const systemPrompt = await this.loadAssessmentPrompt();
       
-      // Format the data for analysis - support new webhook assessment data format
+      // Format the data for analysis
       let formattedData: string;
       if (this.isWebhookAssessmentData(rawData)) {
+        // Use the JSON formatter for LLM analysis (not markdown formatter)
+        // The LLM needs structured data, not human-readable markdown
         formattedData = this.formatWebhookAssessmentDataForAnalysis(rawData);
+        logger.info('Using structured JSON format for LLM analysis');
       } else if (this.isFivePillarRawData(rawData)) {
         formattedData = this.formatFivePillarDataForAnalysis(rawData);
       } else {
@@ -382,12 +619,13 @@ export class PerplexityService {
         },
         {
           role: "user",
-          content: `Please analyze the following QuickBooks Online data and provide a complete hygiene assessment following the Day-30 Readiness Scoring Model.
+          content: `Please analyze the following QuickBooks Online data and provide a complete hygiene assessment following the Day-30 Readiness Scoring Model as specified in the prompt.
 
-IMPORTANT: You MUST return your response as a valid JSON object only, with no additional text, markdown, or explanations outside the JSON structure. The JSON should follow this exact format:
+IMPORTANT: You MUST return your response as a valid JSON object only, with no additional text, markdown, or explanations outside the JSON structure. The JSON should follow this exact format to match the 4 sections specified in the prompt:
 
 {
   "overallScore": number (0-100),
+  "scoreCategory": string ("Excellent" | "Good" | "Fair" | "Needs Attention" | "Critical"),
   "pillarScores": {
     "reconciliation": number (0-100),
     "coaIntegrity": number (0-100),
@@ -396,53 +634,114 @@ IMPORTANT: You MUST return your response as a valid JSON object only, with no ad
     "arApValidity": number (0-100)
   },
   "readinessStatus": string ("READY FOR MONTHLY OPERATIONS" | "NEEDS CLEANUP" | "CRITICAL ISSUES"),
-  "criticalIssues": [
-    {
-      "pillar": string,
-      "description": string,
-      "severity": string ("critical" | "major" | "minor"),
-      "impact": string,
-      "remediation": string
-    }
-  ],
-  "improvements": [
-    {
-      "area": string,
-      "description": string,
-      "priority": string ("high" | "medium" | "low"),
-      "estimatedTime": string
-    }
-  ],
-  "summary": {
-    "executiveSummary": string,
-    "technicalSummary": string,
-    "nextSteps": [string]
+  
+  "section1_executiveSummary": {
+    "healthScore": string (e.g., "78/100 - Good"),
+    "whatThisMeans": string (plain language explanation of current state and business impact),
+    "keyFindings": [
+      string (major issues in simple terms),
+      string (positive aspects to acknowledge),
+      string (business impact of current state)
+    ],
+    "recommendedNextSteps": [string] (clear actions in business language)
   },
+  
+  "section2_detailedResults": {
+    "pillarBreakdown": [
+      {
+        "name": "Bank & Credit Card Matching",
+        "score": number,
+        "status": string
+      },
+      {
+        "name": "Money Organization System",
+        "score": number,
+        "status": string
+      },
+      {
+        "name": "Transaction Categorization",
+        "score": number,
+        "status": string
+      },
+      {
+        "name": "Control Account Accuracy",
+        "score": number,
+        "status": string
+      },
+      {
+        "name": "Customer/Vendor Balances",
+        "score": number,
+        "status": string
+      }
+    ]
+  },
+  
+  "section3_technicalRemediation": {
+    "criticalIssues": [
+      {
+        "priority": number (1 = highest),
+        "issueDescription": string,
+        "problem": string (technical description),
+        "qboLocation": string (exact QBO path),
+        "fixSteps": string (step-by-step remedy),
+        "estimatedTime": string (e.g., "2 hours")
+      }
+    ],
+    "recommendedImprovements": [
+      {
+        "area": string,
+        "description": string,
+        "qboNavigation": string,
+        "priority": string ("high" | "medium" | "low")
+      }
+    ],
+    "ongoingMaintenance": [
+      {
+        "frequency": string ("monthly" | "quarterly"),
+        "task": string,
+        "qboPath": string
+      }
+    ]
+  },
+  
+  "section4_scoringTransparency": {
+    "assessmentDate": string (ISO date),
+    "dataPeriodAnalyzed": string (e.g., "2024-01-01 to 2024-12-31"),
+    "scoringModel": "Day-30 Readiness Framework",
+    "repeatability": "Same data will produce identical results",
+    "limitations": [string] (any incomplete data areas)
+  },
+  
   "detailedAnalysis": {
     "reconciliation": {
       "score": number,
       "findings": string,
-      "recommendations": string
+      "recommendations": string,
+      "businessImpact": string
     },
     "chartOfAccounts": {
       "score": number,
       "findings": string,
-      "recommendations": string
+      "recommendations": string,
+      "businessImpact": string
     },
     "categorization": {
       "score": number,
       "findings": string,
-      "recommendations": string
+      "recommendations": string,
+      "businessImpact": string
     },
     "controlAccounts": {
       "score": number,
       "findings": string,
-      "recommendations": string
+      "recommendations": string,
+      "businessImpact": string
     },
     "arApValidity": {
       "score": number,
       "findings": string,
-      "recommendations": string
+      "recommendations": string,
+      "businessImpact": string
     }
   }
 }

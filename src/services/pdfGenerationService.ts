@@ -59,93 +59,92 @@ export class PDFGenerationService {
     // Generate assessment ID
     const assessmentId = `assessment_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
-    let markdown = `FINANCIAL BOOKS HYGIENE ASSESSMENT REPORT
-
-Company: ${company}
-Assessment Date: ${currentDate.toISOString()}
-
-# Financial Books Hygiene Assessment Report
+    // Format following the OUTPUT FORMAT SPECIFICATION from the prompt
+    let markdown = `# FINANCIAL BOOKS HYGIENE ASSESSMENT REPORT
 
 **Company:** ${company}  
-**Assessment Date:** ${formattedDate}  
-**Assessment ID:** ${assessmentId}
+**Assessment Date:** ${currentDate.toISOString()}
 
 ---
 
-## Executive Summary
+## SECTION 1: EXECUTIVE SUMMARY (Business Owner)
 
-**Overall Health Score:** ${assessmentResult.overallScore}/100  
-**Readiness Status:** ${assessmentResult.readinessStatus.replace(/_/g, ' ')}
+### FINANCIAL BOOKS HEALTH ASSESSMENT
 
-### What This Means for Your Business
+**Overall Health Score:** ${assessmentResult.overallScore}/100 - ${assessmentResult.businessOwnerSummary.healthScore || assessmentResult.readinessStatus.replace(/_/g, ' ')}
+
+### WHAT THIS MEANS FOR YOUR BUSINESS:
 
 ${assessmentResult.businessOwnerSummary.whatThisMeans}
 
-### Key Findings
+### KEY FINDINGS:
 
 ${assessmentResult.businessOwnerSummary.keyFindings.map(finding => `• ${finding}`).join('\n')}
 
-### Recommended Next Steps
+### RECOMMENDED NEXT STEPS:
 
 ${assessmentResult.businessOwnerSummary.nextSteps.map(step => `• ${step}`).join('\n')}
 
 ---
 
-## Day-30 Readiness Assessment Breakdown
+## SECTION 2: DETAILED ASSESSMENT RESULTS
 
-### Pillar Scores
+### PILLAR BREAKDOWN:
 
-| Pillar | Score | Weight |
-|--------|-------|---------|
-| Bank & Credit Card Reconciliation | ${assessmentResult.pillarScores.reconciliation}% | 30% |
-| Chart of Accounts Integrity | ${assessmentResult.pillarScores.coaIntegrity}% | 20% |
-| Transaction Categorization | ${assessmentResult.pillarScores.categorization}% | 20% |
-| Control Account Accuracy | ${assessmentResult.pillarScores.controlAccount}% | 15% |
-| A/R & A/P Validity | ${assessmentResult.pillarScores.aging}% | 15% |
+• Bank & Credit Card Matching: ${assessmentResult.pillarScores.reconciliation}/100
+• Money Organization System: ${assessmentResult.pillarScores.coaIntegrity}/100
+• Transaction Categorization: ${assessmentResult.pillarScores.categorization}/100
+• Control Account Accuracy: ${assessmentResult.pillarScores.controlAccount}/100
+• Customer/Vendor Balances: ${assessmentResult.pillarScores.aging}/100
 
 ---
 
-## Technical Remediation Plan (For Bookkeepers)
+## SECTION 3: TECHNICAL REMEDIATION PLAN (Bookkeeper)
 
-### Critical Issues Requiring Immediate Action
+### CRITICAL ISSUES REQUIRING IMMEDIATE ACTION:
 
 ${assessmentResult.bookkeeperReport.criticalIssues.length > 0 
   ? assessmentResult.bookkeeperReport.criticalIssues.map(issue => 
       `**Priority ${issue.priority}: ${issue.pillar}**
-- **Issue:** ${issue.issue}
-- **Location:** ${issue.qboLocation}
-- **Fix:** ${issue.fixSteps}
-- **Estimated Time:** ${issue.estimatedTime}
+• Problem: ${issue.issue}
+• Location: ${issue.qboLocation}
+• Fix: ${issue.fixSteps}
+• Time: ${issue.estimatedTime}
 `).join('\n')
   : 'No critical issues identified.'}
 
-### Recommended Improvements
+### RECOMMENDED IMPROVEMENTS:
 
-${assessmentResult.bookkeeperReport.recommendedImprovements.map(improvement => `• ${improvement}`).join('\n')}
+${assessmentResult.bookkeeperReport.recommendedImprovements.length > 0
+  ? assessmentResult.bookkeeperReport.recommendedImprovements.map(improvement => `• ${improvement}`).join('\n')
+  : 'No additional improvements recommended at this time.'}
 
-### Ongoing Maintenance Requirements
+### ONGOING MAINTENANCE REQUIREMENTS:
 
-${assessmentResult.bookkeeperReport.ongoingMaintenance.map(task => `• ${task}`).join('\n')}
+${assessmentResult.bookkeeperReport.ongoingMaintenance.length > 0
+  ? assessmentResult.bookkeeperReport.ongoingMaintenance.map(task => `• ${task}`).join('\n')
+  : 'Standard monthly bookkeeping maintenance recommended.'}
 
 ---
 
-## Assessment Methodology
+## SECTION 4: SCORING TRANSPARENCY
 
-**Scoring Model:** ${assessmentResult.assessmentMetadata.scoringModel}  
-**Data Period Analyzed:** ${assessmentResult.assessmentMetadata.dataPeriod}  
+### ASSESSMENT METHODOLOGY SUMMARY:
+
+• Assessment Date: ${formattedDate}
+• Data Period Analyzed: ${assessmentResult.assessmentMetadata.dataPeriod}
+• Scoring Model: ${assessmentResult.assessmentMetadata.scoringModel || 'Day-30 Readiness Framework'}
+• Repeatability: Same data will produce identical results
 ${assessmentResult.assessmentMetadata.limitations && assessmentResult.assessmentMetadata.limitations.length > 0 
-  ? `**Limitations:** ${assessmentResult.assessmentMetadata.limitations.join(', ')}`
+  ? `• Limitations: ${assessmentResult.assessmentMetadata.limitations.join(', ')}`
   : ''}
 
 ---
 
-*This report was generated using advanced AI analysis following established CPA standards and the Day-30 Readiness Framework for bookkeeping assessment.*
+*This report follows established CPA standards and the Day-30 Readiness Framework for bookkeeping assessment.*
 
-*Generated on: ${formattedDate}, ${formattedTime}*
-
-
----
-Generated on: ${formattedDate}, ${formattedTime}`;
+**Assessment ID:** ${assessmentId}  
+**Generated on:** ${formattedDate}, ${formattedTime}`;
 
     return markdown;
   }
