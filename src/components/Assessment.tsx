@@ -41,7 +41,9 @@ import { RawDataFormatter } from "../services/rawDataFormatter";
 import { AssessmentStorageService } from "../services/assessmentStorageService";
 import { PDFGenerationService } from "../services/pdfGenerationService";
 import DataReportFormatter from "./DataReportFormatter";
+import AssessmentResultsViewer from "./AssessmentResultsViewer";
 import logger from "../lib/logger";
+import { LLMInputFormatter } from '../services/llmInputFormatter';
 
 interface AssessmentProps {
   currentStep: CurrentStep;
@@ -274,6 +276,7 @@ const Assessment = ({
 
   // PDF generation state
   const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
+  const [showDetailedViewer, setShowDetailedViewer] = useState(false);
   const [pdfError, setPdfError] = useState<string | null>(null);
 
   const mockAssessmentResults: AssessmentResults = {
@@ -584,6 +587,12 @@ const Assessment = ({
         percentage: 25,
       });
 
+      // Check for transaction processing issues
+      const reconciliation = webhookData.pillarData.reconciliation;
+      const hasTransactionDataIssues = reconciliation && 
+        !reconciliation.hasTransactionData && 
+        reconciliation.totalRowsFound > 0;
+
       // Prepare assessment data for AI analysis
       const assessmentDataForAI = {
         assessmentDate: new Date().toISOString(),
@@ -597,6 +606,18 @@ const Assessment = ({
         meta: webhookData.meta, // Include meta data for validation
         rawPillarData: webhookData.pillarData, // Keep this for backward compatibility
         financialMetrics,
+        dataQualityWarnings: hasTransactionDataIssues ? [
+          {
+            severity: "warning",
+            pillar: "reconciliation",
+            message: `Transaction data processing incomplete: ${reconciliation.totalRowsFound} rows found but only ${reconciliation.totalTransactionsProcessed} processed. This may affect reconciliation scoring accuracy due to column mapping issues in the TransactionList report.`,
+            technicalDetails: {
+              totalRowsFound: reconciliation.totalRowsFound,
+              totalTransactionsProcessed: reconciliation.totalTransactionsProcessed,
+              clearedColumnFound: reconciliation.clearedColumnFound
+            }
+          }
+        ] : []
       };
 
       // Validate data before sending to AI
@@ -642,13 +663,41 @@ const Assessment = ({
         percentage: 85,
       });
 
-      // Use LLM results directly - LLM calculates all scores from raw data
-      // No merging needed as LLM is the single source of truth for scoring
-      setAssessmentResults(completeResponse.assessmentResult);
+      // Merge LLM results with calculated assessment, preserving calculated values when AI provides placeholders
+      const mergedAssessment: HygieneAssessmentResult = {
+        ...completeResponse.assessmentResult,
+        // Override placeholder text with calculated values if AI didn't provide proper content
+        businessOwnerSummary: {
+          ...completeResponse.assessmentResult.businessOwnerSummary,
+          // Check for invalid/placeholder text and use calculated value or error
+          whatThisMeans: (() => {
+            const aiValue = completeResponse.assessmentResult.businessOwnerSummary.whatThisMeans;
+            const calcValue = assessmentResults?.businessOwnerSummary?.whatThisMeans;
+            
+            if (!aiValue || aiValue.includes("Analyzing") || aiValue.includes("Loading")) {
+              logger.error('AI returned invalid whatThisMeans text', { aiValue });
+              return calcValue || 'ERROR: Missing assessment summary';
+            }
+            return aiValue;
+          })(),
+          // Use calculated key findings if AI didn't provide any
+          keyFindings: completeResponse.assessmentResult.businessOwnerSummary.keyFindings.length === 0 && 
+                      assessmentResults?.businessOwnerSummary?.keyFindings
+            ? assessmentResults.businessOwnerSummary.keyFindings
+            : completeResponse.assessmentResult.businessOwnerSummary.keyFindings,
+          // Use calculated next steps if AI didn't provide any
+          nextSteps: completeResponse.assessmentResult.businessOwnerSummary.nextSteps.length === 0 && 
+                    assessmentResults?.businessOwnerSummary?.nextSteps
+            ? assessmentResults.businessOwnerSummary.nextSteps
+            : completeResponse.assessmentResult.businessOwnerSummary.nextSteps,
+        },
+      };
+      
+      setAssessmentResults(mergedAssessment);
 
-      // Store ephemerally for PDF generation with LLM results
+      // Store ephemerally for PDF generation with merged results
       const assessmentId = AssessmentStorageService.storeAssessmentResults(
-        completeResponse.assessmentResult,
+        mergedAssessment,
         completeResponse.rawLLMResponse,
         formData.company,
       );
@@ -2155,8 +2204,23 @@ const Assessment = ({
                     </div>
                     <div className="flex justify-between">
                       <span className="text-gray-600">Status:</span>
-                      <span className="font-medium text-green-600">✓ Analyzed</span>
+                      {webhookData.pillarData.reconciliation.hasTransactionData ? (
+                        <span className="font-medium text-green-600">✓ Analyzed</span>
+                      ) : webhookData.pillarData.reconciliation.totalRowsFound > 0 ? (
+                        <span className="font-medium text-yellow-600">⚠️ Partial Data</span>
+                      ) : (
+                        <span className="font-medium text-gray-600">No Data</span>
+                      )}
                     </div>
+                    {webhookData.pillarData.reconciliation.totalRowsFound > 0 && 
+                     !webhookData.pillarData.reconciliation.hasTransactionData && (
+                      <div className="mt-2 p-2 bg-yellow-50 border border-yellow-200 rounded text-xs">
+                        <p className="text-yellow-800">
+                          ⚠️ Transaction data was found ({webhookData.pillarData.reconciliation.totalRowsFound} rows) 
+                          but could not be processed due to column mapping issues. This may affect reconciliation accuracy.
+                        </p>
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -2340,16 +2404,69 @@ const Assessment = ({
               </div>
             )}
 
-            {/* Action Button */}
-            <div className="bg-white rounded-lg shadow p-6 text-center">
+            {/* Action Buttons */}
+            <div className="bg-white rounded-lg shadow p-6">
               {!isAnalyzing ? (
-                <button
-                  onClick={handleAIAnalysis}
-                  className="bg-blue-600 text-white px-8 py-3 rounded-lg hover:bg-blue-700 transition-colors flex items-center mx-auto"
-                >
-                  <PlayIcon className="w-5 h-5 mr-2" />
-                  Run AI Hygiene Assessment
-                </button>
+                <div className="space-y-4">
+                  {/* View/Download LLM Input Data */}
+                  {webhookData && (
+                    <div className="border-b pb-4 mb-4">
+                      <h4 className="text-sm font-semibold text-gray-700 mb-3">Review Data Being Sent to AI:</h4>
+                      <div className="flex flex-wrap gap-3 justify-center">
+                        <button
+                          onClick={() => {
+                            const llmData = {
+                              webhookData,
+                              calculatedAssessment: assessmentResults,
+                              formattedDate: new Date().toLocaleDateString(),
+                              companyName: formData.company || 'Company'
+                            };
+                            LLMInputFormatter.downloadLLMInput(llmData, 'md');
+                          }}
+                          className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors flex items-center"
+                        >
+                          <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 19l3 3m0 0l3-3m-3 3V10" />
+                          </svg>
+                          Download Input Data (.md)
+                        </button>
+                        <button
+                          onClick={async () => {
+                            const llmData = {
+                              webhookData,
+                              calculatedAssessment: assessmentResults,
+                              formattedDate: new Date().toLocaleDateString(),
+                              companyName: formData.company || 'Company'
+                            };
+                            const result = await LLMInputFormatter.sendToPDFAPI(llmData);
+                            if (result.url) {
+                              window.open(result.url, '_blank');
+                            } else {
+                              logger.error('Failed to generate PDF view', result.error);
+                              alert('Failed to generate PDF view: ' + result.error);
+                            }
+                          }}
+                          className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors flex items-center"
+                        >
+                          <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                          </svg>
+                          View Input Data (PDF)
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                  
+                  {/* Run AI Assessment Button */}
+                  <button
+                    onClick={handleAIAnalysis}
+                    className="bg-blue-600 text-white px-8 py-3 rounded-lg hover:bg-blue-700 transition-colors flex items-center mx-auto"
+                  >
+                    <PlayIcon className="w-5 h-5 mr-2" />
+                    Run AI Hygiene Assessment
+                  </button>
+                </div>
               ) : (
                 <div className="flex flex-col items-center">
                   <ReloadIcon className="w-8 h-8 text-blue-600 animate-spin mb-4" />
@@ -2650,6 +2767,13 @@ const Assessment = ({
                     {hasAssessmentResults && (
                       <>
                         <button
+                          onClick={() => setShowDetailedViewer(true)}
+                          className="flex items-center bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 transition-colors"
+                        >
+                          <EyeOpenIcon className="w-4 h-4 mr-2" />
+                          View Detailed Report
+                        </button>
+                        <button
                           onClick={() => handlePDFGeneration("view")}
                           disabled={isGeneratingPDF}
                           className="flex items-center bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 disabled:bg-blue-400 transition-colors"
@@ -2661,7 +2785,7 @@ const Assessment = ({
                           )}
                           {isGeneratingPDF
                             ? "Generating..."
-                            : "View PDF Report"}
+                            : "View PDF"}
                         </button>
                         <button
                           onClick={() => handlePDFGeneration("download")}
@@ -2673,7 +2797,7 @@ const Assessment = ({
                           ) : (
                             <DownloadIcon className="w-4 h-4 mr-2" />
                           )}
-                          {isGeneratingPDF ? "Generating..." : "Download PDF"}
+                          {isGeneratingPDF ? "Generating..." : "Download"}
                         </button>
                       </>
                     )}
@@ -2856,6 +2980,28 @@ const Assessment = ({
                 </div>
               </div>
             )}
+          </div>
+        )}
+        
+        {/* Detailed Assessment Viewer Modal */}
+        {showDetailedViewer && assessmentResults && (
+          <div className="fixed inset-0 z-50 overflow-y-auto">
+            <div className="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:block sm:p-0">
+              {/* Background overlay */}
+              <div 
+                className="fixed inset-0 transition-opacity bg-gray-500 bg-opacity-75"
+                onClick={() => setShowDetailedViewer(false)}
+              />
+              
+              {/* Modal content */}
+              <div className="inline-block w-full max-w-7xl px-4 pt-5 pb-4 overflow-hidden text-left align-bottom transition-all transform bg-white rounded-lg shadow-xl sm:my-8 sm:align-middle sm:p-6">
+                <AssessmentResultsViewer
+                  assessmentResult={assessmentResults}
+                  companyName={formData.company || 'Unknown Company'}
+                  onClose={() => setShowDetailedViewer(false)}
+                />
+              </div>
+            </div>
           </div>
         )}
       </div>
