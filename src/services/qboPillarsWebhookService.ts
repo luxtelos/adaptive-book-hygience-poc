@@ -7,6 +7,7 @@
  */
 
 import { QBOTokenService } from './qboTokenService';
+import { logger } from '../lib/logger';
 
 // =================================================================================
 // WEBHOOK RESPONSE TYPES
@@ -142,7 +143,8 @@ const RETRY_DELAY = 2000; // Start with 2 seconds
  */
 export async function fetchAllPillarsData(
   clerkUserId: string,
-  onProgress?: (pillar: string, status: 'pending' | 'importing' | 'completed' | 'error') => void
+  onProgress?: (pillar: string, status: 'pending' | 'importing' | 'completed' | 'error') => void,
+  days?: string
 ): Promise<WebhookResponse> {
   try {
     // Validate webhook URL is configured
@@ -166,9 +168,23 @@ export async function fetchAllPillarsData(
       onProgress('arApValidity', 'importing');
     }
 
+    // Build webhook URL with parameters
+    const webhookParams = new URLSearchParams({
+      realmId: tokens.realm_id,
+      token: tokens.access_token
+    });
+    
+    // Add days parameter if provided
+    if (days) {
+      webhookParams.append('days', days);
+      logger.info(`Requesting data for ${days} days from webhook`);
+    } else {
+      logger.info('No days parameter provided, using webhook default');
+    }
+
     // Make webhook request with retry logic
     const response = await fetchWithRetry(
-      `${WEBHOOK_URL}?realmId=${tokens.realm_id}&token=${encodeURIComponent(tokens.access_token)}`,
+      `${WEBHOOK_URL}?${webhookParams.toString()}`,
       {
         method: 'GET',
         headers: {
@@ -192,6 +208,17 @@ export async function fetchAllPillarsData(
     
     // Handle both array and object response formats
     const webhookData: WebhookResponse = Array.isArray(data) ? data[0] : data;
+    
+    // Log and verify windowDays matches requested days
+    if (webhookData?.meta?.windowDays) {
+      logger.info(`Webhook returned windowDays: ${webhookData.meta.windowDays}, requested days: ${days || 'default'}`);
+      if (days && webhookData.meta.windowDays !== parseInt(days)) {
+        logger.warn(`⚠️ Webhook windowDays (${webhookData.meta.windowDays}) doesn't match requested days (${days})`);
+        // Override with user-selected value if mismatch
+        webhookData.meta.windowDays = parseInt(days);
+        logger.info(`Overriding windowDays with user selection: ${days}`);
+      }
+    }
     
     console.log('🔍 Processed webhook data:', JSON.stringify(webhookData, null, 2));
     
@@ -320,8 +347,8 @@ export function calculateDataCompleteness(data: WebhookPillarData): number {
  * Export service singleton
  */
 export const qboPillarsWebhookService = {
-  fetchAllPillarsData: (clerkUserId: string, onProgress?: (pillar: string, status: 'pending' | 'importing' | 'completed' | 'error') => void) => 
-    fetchAllPillarsData(clerkUserId, onProgress),
+  fetchAllPillarsData: (clerkUserId: string, onProgress?: (pillar: string, status: 'pending' | 'importing' | 'completed' | 'error') => void, days?: string) => 
+    fetchAllPillarsData(clerkUserId, onProgress, days),
   formatCurrency,
   calculateDataCompleteness,
 };
