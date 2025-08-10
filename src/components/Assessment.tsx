@@ -408,7 +408,7 @@ const Assessment = ({
       const webhookData = await qboPillarsWebhookService.fetchAllPillarsData(
         user.id,
         progressCallback,
-        daysFilter.toString()
+        daysFilter
       );
 
       // Simulate progressive import for each pillar with delays for better UX
