@@ -144,7 +144,7 @@ const RETRY_DELAY = 2000; // Start with 2 seconds
 export async function fetchAllPillarsData(
   clerkUserId: string,
   onProgress?: (pillar: string, status: 'pending' | 'importing' | 'completed' | 'error') => void,
-  days?: string
+  days?: number
 ): Promise<WebhookResponse> {
   try {
     // Validate webhook URL is configured
