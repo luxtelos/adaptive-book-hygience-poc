@@ -42,6 +42,7 @@ import { AssessmentStorageService } from "../services/assessmentStorageService";
 import { PDFGenerationService } from "../services/pdfGenerationService";
 import DataReportFormatter from "./DataReportFormatter";
 import AssessmentResultsViewer from "./AssessmentResultsViewer";
+import DaysFilter from "./DaysFilter";
 import logger from "../lib/logger";
 import { LLMInputFormatter } from '../services/llmInputFormatter';
 
@@ -116,6 +117,9 @@ const Assessment = ({
     startDate: "2024-01-01",
     endDate: "2024-12-31",
   });
+  
+  // State for days filter
+  const [daysFilter, setDaysFilter] = useState<number>(90);
 
   // Get QBO service from context
   const { qboService, error: serviceError } = useQBOService();
@@ -321,7 +325,7 @@ const Assessment = ({
     "Audit Log",
   ];
 
-  // Initialize QBO service and automatically fetch data when authenticated
+  // Initialize QBO service when authenticated but DON'T auto-fetch data
   useEffect(() => {
     if (
       accessToken &&
@@ -331,15 +335,12 @@ const Assessment = ({
       !isFetchingData
     ) {
       qboService.setAuth(accessToken, realmId);
-      logger.info("QBO service authenticated, starting automatic data fetch");
-
-      // Skip customer selection and go directly to analysis with data fetch
-      if (currentStep === "upload") {
-        // Don't change step yet - let handleFetchFinancialData manage it
-        // setCurrentStep("analysis");
-        // Automatically fetch the financial data
-        handleFetchFinancialData();
-      }
+      logger.info("QBO service authenticated, ready for manual data import");
+      
+      // Don't automatically start import - let user:
+      // 1. See and adjust the DaysFilter component
+      // 2. Click "Import QBO Data" button manually
+      // This gives user control over the date range selection
     }
   }, [
     accessToken,
@@ -407,6 +408,7 @@ const Assessment = ({
       const webhookData = await qboPillarsWebhookService.fetchAllPillarsData(
         user.id,
         progressCallback,
+        daysFilter.toString()
       );
 
       // Simulate progressive import for each pillar with delays for better UX
@@ -922,16 +924,26 @@ const Assessment = ({
                       <h3 className="text-lg font-semibold text-gray-900 mb-2">
                         QuickBooks Already Connected
                       </h3>
-                      <p className="text-gray-700 mb-4">
-                        Your QuickBooks Online account is connected and ready. Click below to import your financial data.
+                      <p className="text-gray-700 mb-6">
+                        Your QuickBooks Online account is connected and ready. Configure the data range and import your financial data.
                       </p>
+                      
+                      {/* Days Filter Component */}
+                      <div className="mb-6">
+                        <DaysFilter
+                          value={daysFilter}
+                          onChange={setDaysFilter}
+                          disabled={isFetchingData || isImportingData}
+                        />
+                      </div>
+                      
                       <div className="flex gap-4">
                         <button
                           onClick={handleFetchFinancialData}
                           className="bg-green-600 text-white px-6 py-3 rounded-lg hover:bg-green-700 transition-colors flex items-center"
                         >
                           <DownloadIcon className="w-5 h-5 mr-2" />
-                          Start 5-Pillar Data Import
+                          Import QuickBooks Data ({daysFilter} days)
                         </button>
                         <button
                           onClick={() => navigate("/qbo-auth")}
@@ -2396,9 +2408,9 @@ const Assessment = ({
                       Window Period
                     </h4>
                     <p className="text-2xl font-bold text-purple-600">
-                      {webhookData.meta.windowDays}
+                      {webhookData.meta.windowDays || daysFilter}
                     </p>
-                    <p className="text-sm text-purple-700">days of data</p>
+                    <p className="text-sm text-purple-700">days of data requested</p>
                   </div>
                 </div>
               </div>
