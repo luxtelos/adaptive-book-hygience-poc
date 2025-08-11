@@ -96,7 +96,7 @@ export class DataIntegrityLogger {
     // Note: rawDataTransformer already converts QBO's negative AP to positive
     if (data.controlAccounts?.ap?.balance !== undefined) {
       const apBalance = data.controlAccounts.ap.balance;
-      const apRaw = data.controlAccounts.ap.raw;
+      const apRaw = data.controlAccounts.ap?.raw;
       
       console.log('🔍 AP Sign Validation:', {
         balance: apBalance,
