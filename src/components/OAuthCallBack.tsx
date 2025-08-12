@@ -37,9 +37,47 @@ const OAuthCallback: React.FC<OAuthCallbackProps> = ({
       const params = new URLSearchParams(location.search);
       const qbTokens = params.get("qb_tokens");
       const error = params.get("error");
+      const state = params.get("state");
 
       logger.debug("OAuth callback - code received:", qbTokens);
       logger.debug("OAuth callback - error received:", error);
+      logger.debug("OAuth callback - state received:", state);
+
+      // Verify state parameter for CSRF protection (OAuth 2.0 best practice)
+      const storedState = sessionStorage.getItem('qbo_oauth_state');
+      const storedTimestamp = sessionStorage.getItem('qbo_oauth_timestamp');
+      
+      if (state && storedState) {
+        if (state !== storedState) {
+          logger.error("OAuth state mismatch - possible CSRF attack", {
+            received: state,
+            expected: storedState
+          });
+          setError("Security validation failed. Please try connecting again.");
+          sessionStorage.removeItem('qbo_oauth_state');
+          sessionStorage.removeItem('qbo_oauth_timestamp');
+          navigate("/qbo-auth");
+          return;
+        }
+        
+        // Check if state is not too old (15 minutes max)
+        if (storedTimestamp) {
+          const elapsed = Date.now() - parseInt(storedTimestamp);
+          if (elapsed > 15 * 60 * 1000) {
+            logger.warn("OAuth state expired (>15 minutes old)");
+            setError("Authentication session expired. Please try again.");
+            sessionStorage.removeItem('qbo_oauth_state');
+            sessionStorage.removeItem('qbo_oauth_timestamp');
+            navigate("/qbo-auth");
+            return;
+          }
+        }
+        
+        // Clear state from storage after successful validation
+        sessionStorage.removeItem('qbo_oauth_state');
+        sessionStorage.removeItem('qbo_oauth_timestamp');
+        logger.info("OAuth state validated successfully");
+      }
 
       if (error) {
         logger.error("OAuth error:", error);
