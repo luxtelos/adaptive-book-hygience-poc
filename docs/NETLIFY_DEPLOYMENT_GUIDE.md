@@ -36,7 +36,7 @@ VITE_QBO_CLIENT_ID=
 VITE_QBO_REDIRECT_URI=
 VITE_QBO_SCOPE=com.intuit.quickbooks.accounting
 VITE_QBO_POST_LOGIN_REDIRECT=
-VITE_QBO_AUTH_BASE_URL=https://appcenter.intuit.com/connect/oauth2
+VITE_QBO_AUTH_BASE_URL=https://appcenter.intuit.com/connect/oauth2/authorize
 ```
 
 ## 🚀 Step-by-Step Deployment Instructions
