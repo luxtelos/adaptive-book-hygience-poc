@@ -1,4 +1,5 @@
 import { logger } from "../lib/logger";
+import { QBOTokenService, StoredQBOTokens, OAuthTokenError, OAuthErrorType } from './qboTokenService';
 
 /**
  * @file qboApiService.ts
@@ -459,6 +460,9 @@ export class QBOApiService {
   private rateLimiter: RateLimiter;
   private accessToken: string | null = null;
   private realmId: string | null = null;
+  private clerkUserId: string | null = null;
+  private backgroundRefreshTimer: NodeJS.Timeout | null = null;
+  private readonly BACKGROUND_REFRESH_INTERVAL_MS = 12 * 60 * 60 * 1000; // 12 hours
 
   constructor(rateLimitConfig?: Partial<RateLimitConfig>) {
     logger.debug("Initializing QBOApiService...");
@@ -494,11 +498,137 @@ export class QBOApiService {
    * Sets the authentication credentials required for API calls.
    * @param accessToken - The OAuth 2.0 access token.
    * @param realmId - The QBO company ID.
+   * @param clerkUserId - The user ID for token management.
    */
-  public setAuth(accessToken: string, realmId: string) {
+  public setAuth(accessToken: string, realmId: string, clerkUserId?: string) {
     this.accessToken = accessToken;
     this.realmId = realmId;
+    this.clerkUserId = clerkUserId || null;
     logger.info("QBOApiService authentication tokens have been set.");
+    
+    // Start background token refresh if clerkUserId is provided
+    if (this.clerkUserId) {
+      this.startBackgroundTokenRefresh();
+    }
+  }
+
+  /**
+   * Set auth using stored tokens with automatic refresh capability
+   */
+  public async setAuthFromStoredTokens(clerkUserId: string): Promise<boolean> {
+    try {
+      const tokens = await QBOTokenService.getValidTokens(clerkUserId);
+      if (!tokens) {
+        logger.warn('No valid stored tokens found for user');
+        return false;
+      }
+
+      this.accessToken = tokens.access_token;
+      this.realmId = tokens.realm_id;
+      this.clerkUserId = clerkUserId;
+      
+      logger.info('QBOApiService authentication set from stored tokens');
+      this.startBackgroundTokenRefresh();
+      
+      return true;
+    } catch (error) {
+      logger.error('Failed to set auth from stored tokens', error);
+      return false;
+    }
+  }
+
+  /**
+   * Clear authentication and stop background refresh
+   */
+  public clearAuth() {
+    this.accessToken = null;
+    this.realmId = null;
+    this.clerkUserId = null;
+    this.stopBackgroundTokenRefresh();
+    logger.info('QBOApiService authentication cleared');
+  }
+
+  /**
+   * Start background token refresh mechanism
+   */
+  private startBackgroundTokenRefresh() {
+    if (!this.clerkUserId) return;
+    
+    // Clear existing timer
+    this.stopBackgroundTokenRefresh();
+    
+    // Start new timer
+    this.backgroundRefreshTimer = setInterval(async () => {
+      try {
+        if (!this.clerkUserId) return;
+        
+        logger.debug('Background token refresh triggered');
+        const tokens = await QBOTokenService.getTokens(this.clerkUserId);
+        
+        if (tokens && QBOTokenService.isTokenNearExpiry(tokens)) {
+          logger.info('Background token refresh needed');
+          await QBOTokenService.refreshAccessToken(this.clerkUserId);
+          
+          // Update local tokens
+          const refreshedTokens = await QBOTokenService.getTokens(this.clerkUserId);
+          if (refreshedTokens) {
+            this.accessToken = refreshedTokens.access_token;
+            logger.info('Background token refresh completed');
+          }
+        }
+      } catch (error) {
+        logger.error('Background token refresh failed', error);
+      }
+    }, this.BACKGROUND_REFRESH_INTERVAL_MS);
+    
+    logger.debug('Background token refresh started');
+  }
+
+  /**
+   * Stop background token refresh
+   */
+  private stopBackgroundTokenRefresh() {
+    if (this.backgroundRefreshTimer) {
+      clearInterval(this.backgroundRefreshTimer);
+      this.backgroundRefreshTimer = null;
+      logger.debug('Background token refresh stopped');
+    }
+  }
+
+  /**
+   * Ensure we have valid tokens before making API calls
+   */
+  private async ensureValidTokens(): Promise<boolean> {
+    if (!this.clerkUserId) {
+      // If no clerkUserId, assume tokens are managed externally
+      return !!(this.accessToken && this.realmId);
+    }
+
+    try {
+      const tokens = await QBOTokenService.getValidTokens(this.clerkUserId);
+      if (!tokens) {
+        logger.error('No valid tokens available');
+        return false;
+      }
+
+      // Update local tokens if they've been refreshed
+      if (tokens.access_token !== this.accessToken) {
+        this.accessToken = tokens.access_token;
+        logger.debug('Updated access token from refresh');
+      }
+
+      return true;
+    } catch (error) {
+      if (error instanceof OAuthTokenError && error.requiresReauth) {
+        logger.error('Token refresh failed, re-authentication required', error);
+        // Could emit an event or call a callback here to redirect to re-auth
+        this.clearAuth();
+        return false;
+      }
+      
+      logger.error('Error ensuring valid tokens', error);
+      return false;
+    }
   }
 
   // --- PUBLIC DATA FETCHING METHODS ---
@@ -1951,7 +2081,7 @@ export class QBOApiService {
       clearTimeout(timeoutId);
 
       if (!response.ok) {
-        await this.handleHttpError(response);
+        // Capture intuit_tid for QuickBooks support troubleshooting\n        const intuitTid = response.headers.get('intuit_tid');\n        if (intuitTid) {\n          logger.debug('QuickBooks request completed', {\n            intuit_tid: intuitTid,\n            endpoint: endpoint,\n            method: method,\n            status: response.status\n          });\n        }\n        await this.handleHttpError(response, intuitTid);
       }
 
       const result = await response.json();
@@ -1993,7 +2123,7 @@ export class QBOApiService {
     }
   }
 
-  private async handleHttpError(response: Response) {
+  private async handleHttpError(response: Response, intuitTid?: string) {
     let errorBody;
     try {
       errorBody = await response.json();
