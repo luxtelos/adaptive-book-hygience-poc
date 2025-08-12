@@ -8,13 +8,33 @@
 
 import { QBOTokenService } from './qboTokenService';
 import { logger } from '../lib/logger';
+import { RawDataTransformer, RawQBOData } from './rawDataTransformer';
 
 // =================================================================================
 // WEBHOOK RESPONSE TYPES
 // =================================================================================
 
 /**
- * Response structure from the n8n webhook endpoint
+ * Raw response structure from the n8n webhook endpoint
+ */
+export interface RawWebhookResponse {
+  pillarData?: WebhookPillarData; // Old format
+  chartOfAccounts?: any[]; // New raw format
+  txnList?: any[];
+  ar?: any;
+  ap?: any;
+  trialBal?: any;
+  journalEntries?: any[];
+  meta: {
+    realmId: string;
+    start_date: string;
+    end_date: string;
+    windowDays: number;
+  };
+}
+
+/**
+ * Processed webhook response with guaranteed pillar data
  */
 export interface WebhookResponse {
   pillarData: WebhookPillarData;
@@ -122,6 +142,8 @@ export interface WebhookPillarData {
       d61_90: number;
       d90_plus: number;
     };
+    arTotal?: number; // Optional totals
+    apTotal?: number;
   };
 }
 
@@ -203,11 +225,36 @@ export async function fetchAllPillarsData(
     const data = await response.json();
     
     // Enhanced logging for debugging
-    console.log('🔍 Raw webhook response:', JSON.stringify(data, null, 2));
-    console.log('🔍 Response type:', Array.isArray(data) ? 'array' : typeof data);
+    console.log('🔍 Raw webhook response structure:', {
+      isArray: Array.isArray(data),
+      hasChartOfAccounts: !!data.chartOfAccounts || !!(data[0]?.chartOfAccounts),
+      hasPillarData: !!data.pillarData || !!(data[0]?.pillarData),
+      keys: Object.keys(Array.isArray(data) ? data[0] || {} : data)
+    });
     
-    // Handle both array and object response formats
-    const webhookData: WebhookResponse = Array.isArray(data) ? data[0] : data;
+    // Check if data is in new raw format or old pillar format
+    let webhookData: WebhookResponse;
+    
+    // Handle array response - webhook returns data split across array elements
+    let processedData = data;
+    if (Array.isArray(data)) {
+      // Merge all array elements into a single object
+      processedData = data.reduce((merged, item) => ({...merged, ...item}), {});
+      logger.info('Merged array response into single object');
+    }
+    
+    // Check if it's raw format (has chartOfAccounts at top level) or pillar format (has pillarData)
+    if (processedData.chartOfAccounts || processedData.txnList || processedData.ar || processedData.ap) {
+      logger.info('Detected raw QuickBooks data format, organizing into 5 pillars (no transformation)');
+      webhookData = RawDataTransformer.transformToPillarFormat(processedData as RawQBOData);
+    } else if (processedData.pillarData) {
+      logger.info('Using existing pillar format data');
+      webhookData = processedData;
+    } else {
+      // Fallback - treat as raw data
+      logger.info('Unknown format, treating as raw QuickBooks data');
+      webhookData = RawDataTransformer.transformToPillarFormat(processedData as RawQBOData);
+    }
     
     // Log and verify windowDays matches requested days
     if (webhookData?.meta?.windowDays) {
@@ -222,10 +269,10 @@ export async function fetchAllPillarsData(
     
     console.log('🔍 Processed webhook data:', JSON.stringify(webhookData, null, 2));
     
+    // Validate that we have pillar data after processing
     if (!webhookData?.pillarData) {
-      console.error('❌ Invalid webhook response structure - missing pillarData');
-      console.error('Available keys:', Object.keys(webhookData || {}));
-      throw new Error('Invalid webhook response structure');
+      console.error('❌ No pillar data available after processing');
+      throw new Error('Failed to process webhook data into pillar format');
     }
 
     // Check for transaction data processing issues
@@ -243,20 +290,39 @@ export async function fetchAllPillarsData(
     
     // Log pillar data details for debugging
     const pillarData = webhookData.pillarData;
-    console.log('🔍 Pillar data summary:', {
+    console.log('🎯 RAW QBO DATA IN 5 PILLARS:', {
+      dataFlow: {
+        step1: 'Raw QBO data received from webhook',
+        step2: 'Organized into 5 pillars (NO transformation)',
+        step3: 'Data displayed as received from QuickBooks'
+      },
       reconciliation: {
         variance: pillarData.reconciliation?.variance?.length || 0,
-        byAccount: pillarData.reconciliation?.byAccount?.length || 0
+        byAccount: pillarData.reconciliation?.byAccount?.length || 0,
+        hasData: pillarData.reconciliation?.hasTransactionData || false
       },
       chartIntegrity: {
-        accounts: pillarData.chartIntegrity?.totals?.accounts || 0
+        totalAccounts: pillarData.chartIntegrity?.totals?.accounts || 0,
+        duplicates: pillarData.chartIntegrity?.duplicates?.name?.length || 0
       },
       categorization: {
-        uncategorizedExpense: pillarData.categorization?.uncategorized?.['Uncategorized Expense']?.amount || 0
+        uncategorizedExpense: pillarData.categorization?.uncategorized?.['Uncategorized Expense']?.amount || 0,
+        uncategorizedIncome: pillarData.categorization?.uncategorized?.['Uncategorized Income']?.amount || 0,
+        askMyAccountant: pillarData.categorization?.uncategorized?.['Ask My Accountant']?.amount || 0
       },
       controlAccounts: {
-        arBalance: pillarData.controlAccounts?.ar?.balance || 0,
-        apBalance: pillarData.controlAccounts?.ap?.balance || 0
+        ar: {
+          balance: pillarData.controlAccounts?.ar?.balance || 0
+        },
+        ap: {
+          balance: pillarData.controlAccounts?.ap?.balance || 0
+        },
+        openingBalance: pillarData.controlAccounts?.openingBalanceEquity?.balance || 0,
+        undepositedFunds: pillarData.controlAccounts?.undepositedFunds?.balance || 0
+      },
+      arApAging: {
+        arTotal: pillarData.arApValidity?.arTotal || 0,
+        apTotal: pillarData.arApValidity?.apTotal || 0
       }
     });
 

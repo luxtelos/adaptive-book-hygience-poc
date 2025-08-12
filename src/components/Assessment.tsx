@@ -42,6 +42,7 @@ import { AssessmentStorageService } from "../services/assessmentStorageService";
 import { PDFGenerationService } from "../services/pdfGenerationService";
 import DataReportFormatter from "./DataReportFormatter";
 import AssessmentResultsViewer from "./AssessmentResultsViewer";
+import PillarDataViewer from "./PillarDataViewer";
 import DaysFilter from "./DaysFilter";
 import logger from "../lib/logger";
 import { LLMInputFormatter } from '../services/llmInputFormatter';
@@ -281,6 +282,7 @@ const Assessment = ({
   // PDF generation state
   const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
   const [showDetailedViewer, setShowDetailedViewer] = useState(false);
+  const [showPillarViewer, setShowPillarViewer] = useState(false);
   const [pdfError, setPdfError] = useState<string | null>(null);
 
   const mockAssessmentResults: AssessmentResults = {
@@ -2174,7 +2176,7 @@ const Assessment = ({
                   <div className="text-green-700 text-sm mt-1 space-y-1">
                     <p>✓ 5-pillar data analysis imported successfully</p>
                     <p>• {webhookData.pillarData.reconciliation.variance?.length || 0} bank accounts analyzed</p>
-                    <p>• {webhookData.pillarData.chartIntegrity.totals.accounts} chart of accounts reviewed</p>
+                    <p>• {webhookData.pillarData.chartIntegrity?.totals?.accounts || 0} chart of accounts reviewed</p>
                     <p>• Period: {webhookData.meta.start_date} to {webhookData.meta.end_date}</p>
                   </div>
                 ) : (
@@ -2696,73 +2698,44 @@ const Assessment = ({
                   </div>
                 </div>
 
-                {/* Pillar Breakdown */}
+                {/* Action Buttons */}
                 <div className="bg-white rounded-lg shadow p-6">
-                  <h3 className="text-xl font-semibold mb-4 flex items-center">
-                    <BarChartIcon className="w-5 h-5 mr-2" />
-                    Day-30 Readiness Assessment
+                  <h3 className="text-xl font-semibold mb-4">
+                    Available Actions
                   </h3>
-                  <div className="space-y-4">
-                    {assessmentResults
-                      ? [
-                          {
-                            name: "Bank & Credit Card Matching",
-                            score:
-                              assessmentResults.pillarScores.reconciliation,
-                          },
-                          {
-                            name: "Chart of Accounts Integrity",
-                            score: assessmentResults.pillarScores.coaIntegrity,
-                          },
-                          {
-                            name: "Transaction Categorization",
-                            score:
-                              assessmentResults.pillarScores.categorization,
-                          },
-                          {
-                            name: "Control Account Accuracy",
-                            score:
-                              assessmentResults.pillarScores.controlAccount,
-                          },
-                          {
-                            name: "A/R & A/P Validity",
-                            score: assessmentResults.pillarScores.aging,
-                          },
-                        ].map((pillar, index) => {
-                          const status =
-                            pillar.score >= 85
-                              ? "good"
-                              : pillar.score >= 70
-                                ? "warning"
-                                : "critical";
-                          return (
-                            <div
-                              key={index}
-                              className="flex items-center justify-between p-4 border rounded-lg"
-                            >
-                              <div className="flex items-center">
-                                {getStatusIcon(status)}
-                                <span className="ml-3 font-medium">
-                                  {pillar.name}
-                                </span>
-                              </div>
-                              <div className="flex items-center">
-                                <div className="w-24 bg-gray-200 rounded-full h-2 mr-3">
-                                  <div
-                                    className={`h-2 rounded-full ${status === "good" ? "bg-green-500" : status === "warning" ? "bg-yellow-500" : "bg-red-500"}`}
-                                    style={{ width: `${pillar.score}%` }}
-                                  ></div>
-                                </div>
-                                <span
-                                  className={`font-semibold ${getScoreColor(pillar.score)}`}
-                                >
-                                  {pillar.score}%
-                                </span>
-                              </div>
-                            </div>
-                          );
-                        })
-                      : []}
+                  <div className="flex flex-wrap gap-3">
+                    {webhookData && (
+                      <button
+                        onClick={() => setShowPillarViewer(true)}
+                        className="flex items-center bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition-colors"
+                      >
+                        <MagnifyingGlassIcon className="w-4 h-4 mr-2" />
+                        View Detailed Pillar Data
+                      </button>
+                    )}
+                    {hasAssessmentResults && (
+                      <>
+                        <button
+                          onClick={() => handlePDFGeneration("download")}
+                          disabled={isGeneratingPDF}
+                          className="flex items-center bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 disabled:bg-green-400 transition-colors"
+                        >
+                          {isGeneratingPDF ? (
+                            <ReloadIcon className="w-4 h-4 mr-2 animate-spin" />
+                          ) : (
+                            <DownloadIcon className="w-4 h-4 mr-2" />
+                          )}
+                          Download Full Report (PDF)
+                        </button>
+                        <button
+                          onClick={() => setShowDetailedViewer(true)}
+                          className="flex items-center bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 transition-colors"
+                        >
+                          <EyeOpenIcon className="w-4 h-4 mr-2" />
+                          View Full Assessment
+                        </button>
+                      </>
+                    )}
                   </div>
                 </div>
               </div>
@@ -2776,6 +2749,15 @@ const Assessment = ({
                     Technical Remediation Plan
                   </h2>
                   <div className="flex items-center space-x-3">
+                    {webhookData && (
+                      <button
+                        onClick={() => setShowPillarViewer(true)}
+                        className="flex items-center bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition-colors"
+                      >
+                        <MagnifyingGlassIcon className="w-4 h-4 mr-2" />
+                        View Pillar Data
+                      </button>
+                    )}
                     {hasAssessmentResults && (
                       <>
                         <button
@@ -2992,6 +2974,37 @@ const Assessment = ({
                 </div>
               </div>
             )}
+          </div>
+        )}
+        
+        {/* Pillar Data Viewer Modal */}
+        {showPillarViewer && webhookData && (
+          <div className="fixed inset-0 z-50 overflow-y-auto">
+            <div className="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:block sm:p-0">
+              {/* Background overlay */}
+              <div 
+                className="fixed inset-0 transition-opacity bg-gray-500 bg-opacity-75"
+                onClick={() => setShowPillarViewer(false)}
+              />
+              
+              {/* Modal content */}
+              <div className="inline-block w-full max-w-6xl px-4 pt-5 pb-4 overflow-hidden text-left align-bottom transition-all transform bg-white rounded-lg shadow-xl sm:my-8 sm:align-middle sm:p-6">
+                <div className="flex justify-between items-center mb-4">
+                  <h2 className="text-2xl font-bold">Financial Hygiene Pillar Data</h2>
+                  <button
+                    onClick={() => setShowPillarViewer(false)}
+                    className="text-gray-400 hover:text-gray-600 transition-colors"
+                  >
+                    <CrossCircledIcon className="w-6 h-6" />
+                  </button>
+                </div>
+                <PillarDataViewer 
+                  pillarData={webhookData.pillarData}
+                  companyName={formData.company || 'Unknown Company'}
+                  assessmentDate={new Date()}
+                />
+              </div>
+            </div>
           </div>
         )}
         

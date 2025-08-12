@@ -133,8 +133,34 @@ const QBOAuth: React.FC<QBOAuthProps> = ({
     console.log("REDIRECT_URI:", REDIRECT_URI);
     console.log("SCOPE:", SCOPE);
     console.log("AUTH_BASE_URL:", AUTH_BASE_URL);
-    const state = "xyz123"; // Optional
-    const authUrl = `${AUTH_BASE_URL}?client_id=${CLIENT_ID}&redirect_uri=${encodeURIComponent(
+    
+    // Ensure AUTH_BASE_URL has the /authorize endpoint
+    const baseUrl = AUTH_BASE_URL?.endsWith('/authorize') 
+      ? AUTH_BASE_URL 
+      : AUTH_BASE_URL?.endsWith('/oauth2')
+        ? `${AUTH_BASE_URL}/authorize`
+        : 'https://appcenter.intuit.com/connect/oauth2/authorize';
+    
+    console.log("Fixed Auth Base URL:", baseUrl);
+    
+    // Generate a cryptographically random state parameter for CSRF protection
+    // OAuth 2.0 best practice: use a random string to prevent CSRF attacks
+    const generateState = () => {
+      const array = new Uint8Array(32);
+      crypto.getRandomValues(array);
+      return Array.from(array, byte => byte.toString(16).padStart(2, '0')).join('');
+    };
+    
+    const state = generateState();
+    
+    // Store state in sessionStorage to verify it when the callback returns
+    // This prevents CSRF attacks by ensuring the callback is from our initiated request
+    sessionStorage.setItem('qbo_oauth_state', state);
+    sessionStorage.setItem('qbo_oauth_timestamp', Date.now().toString());
+    
+    console.log("Generated OAuth state for CSRF protection:", state);
+    
+    const authUrl = `${baseUrl}?client_id=${CLIENT_ID}&redirect_uri=${encodeURIComponent(
       REDIRECT_URI,
     )}&response_type=code&scope=${encodeURIComponent(SCOPE)}&state=${state}`;
     console.log("🚀 Generated OAuth URL:", authUrl);
