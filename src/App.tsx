@@ -5,6 +5,7 @@ import {
   Route,
   Navigate,
 } from "react-router-dom";
+
 import { SignedIn, SignedOut, useUser } from "@clerk/clerk-react";
 import "./App.css";
 import LandingPage from "./components/LandingPage";
