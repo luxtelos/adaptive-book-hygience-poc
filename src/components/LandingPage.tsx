@@ -326,7 +326,7 @@ const LandingPage: React.FC = () => {
       </SignedOut>
 
       {/* Dashboard Section - Only show to signed in users */}
-      <SignedIn>
+      {/* <SignedIn>
         <div className="bg-gray-50 py-16">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="text-center mb-12">
@@ -409,7 +409,7 @@ const LandingPage: React.FC = () => {
             </div>
           </div>
         </div>
-      </SignedIn>
+      </SignedIn> */}
 
       {/* Social Proof */}
       <div className="bg-white py-16">
