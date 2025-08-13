@@ -61,14 +61,12 @@ export interface StoredQBOTokens extends QBOTokens {
 }
 
 /**
- * Configuration for OAuth endpoints based on environment
+ * Configuration for OAuth endpoints
  */
 interface OAuthConfig {
   tokenEndpoint: string;
   revokeEndpoint: string;
   clientId: string;
-  clientSecret: string;
-  isSandbox: boolean;
 }
 
 /**
@@ -93,14 +91,16 @@ export class QBOTokenService {
   
   /**
    * Get OAuth configuration from environment variables
+   * SECURITY: Client secret is NOT included here - handled by N8N proxy backend
    */
   private static getOAuthConfig(): OAuthConfig {
     return {
-      tokenEndpoint: import.meta.env.VITE_QBO_TOKEN_ENDPOINT || 'https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer',
-      revokeEndpoint: import.meta.env.VITE_QBO_REVOKE_ENDPOINT || 'https://developer.api.intuit.com/v2/oauth2/tokens/revoke',
-      clientId: import.meta.env.VITE_QBO_CLIENT_ID || '',
-      clientSecret: import.meta.env.VITE_QBO_CLIENT_SECRET || '',
-      isSandbox: import.meta.env.VITE_QBO_IS_SANDBOX === 'true'
+      // Use N8N proxy endpoints that handle client secret server-side
+      tokenEndpoint: import.meta.env.VITE_N8N_OAUTH_TOKEN_ENDPOINT || 
+        'https://n8n-1-102-1-c1zi.onrender.com/webhook/oauth/refresh',
+      revokeEndpoint: import.meta.env.VITE_N8N_OAUTH_REVOKE_ENDPOINT || 
+        'https://n8n-1-102-1-c1zi.onrender.com/webhook/oauth/revoke',
+      clientId: import.meta.env.VITE_QBO_CLIENT_ID || ''
     };
   }
   
@@ -422,21 +422,20 @@ export class QBOTokenService {
 
       logger.debug(`Attempting token refresh (attempt ${attemptCount + 1}/${this.MAX_REFRESH_ATTEMPTS})`);
 
-      // Prepare refresh request
-      const requestBody = new URLSearchParams({
-        grant_type: 'refresh_token',
+      // Prepare refresh request body as JSON for N8N endpoint
+      const requestBody = {
         refresh_token: currentTokens.refresh_token,
-        client_id: config.clientId,
-        client_secret: config.clientSecret
-      });
+        client_id: config.clientId
+        // client_secret is added server-side by N8N proxy for security
+      };
 
       const response = await fetch(config.tokenEndpoint, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
+          'Content-Type': 'application/json',
           'User-Agent': 'Adaptive-Book-Hygiene/1.0.0'
         },
-        body: requestBody.toString()
+        body: JSON.stringify(requestBody)
       });
 
       if (!response.ok) {
@@ -653,21 +652,21 @@ export class QBOTokenService {
 
       const config = this.getOAuthConfig();
       
-      // Revoke refresh token
-      const revokeBody = new URLSearchParams({
+      // Revoke refresh token (client_secret handled by N8N proxy)
+      const revokeBody = {
         token: tokens.refresh_token,
-        client_id: config.clientId,
-        client_secret: config.clientSecret
-      });
+        client_id: config.clientId
+        // client_secret added server-side by N8N proxy for security
+      };
 
       try {
         const response = await fetch(config.revokeEndpoint, {
           method: 'POST',
           headers: {
-            'Content-Type': 'application/x-www-form-urlencoded',
+            'Content-Type': 'application/json',
             'User-Agent': 'Adaptive-Book-Hygiene/1.0.0'
           },
-          body: revokeBody.toString()
+          body: JSON.stringify(revokeBody)
         });
 
         if (!response.ok) {
