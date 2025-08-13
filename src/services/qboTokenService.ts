@@ -79,7 +79,11 @@ export class QBOTokenService {
   private static readonly TABLE_NAME = 'qbo_tokens';
   private static refreshInProgress = new Map<string, Promise<boolean>>();
   private static refreshAttempts = new Map<string, number>();
-  private static readonly MAX_REFRESH_ATTEMPTS = 3;
+  private static get MAX_REFRESH_ATTEMPTS(): number {
+    const envValue = import.meta.env.VITE_QBO_TOKEN_REFRESH_RETRY_MAX;
+    const parsed = Number(envValue);
+    return Number.isInteger(parsed) && parsed > 0 ? parsed : 3;
+  }
   private static readonly REFRESH_BACKOFF_MS = 2000;
   private static get TOKEN_REFRESH_THRESHOLD_HOURS(): number {
     const envValue = import.meta.env.VITE_QBO_TOKEN_REFRESH_THRESHOLD_HOURS;
