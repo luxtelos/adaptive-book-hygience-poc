@@ -1,44 +1,11 @@
 import React from "react";
-import { Link } from "react-router-dom";
-import { SignedIn, SignedOut, SignInButton, SignUpButton, UserButton, useUser } from "@clerk/clerk-react";
+import Header from "./Header";
+import Footer from "./Footer";
 
 const EULA: React.FC = () => {
-  const { user } = useUser();
-
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <div className="bg-white shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center py-4">
-            <div className="flex items-center">
-              <Link to="/" className="text-2xl font-bold text-gray-900 hover:text-blue-600 transition-colors">
-                BookKeeper Pro
-              </Link>
-            </div>
-            <div className="flex items-center space-x-4">
-              <SignedOut>
-                <SignInButton mode="modal">
-                  <button className="text-gray-600 hover:text-gray-900">
-                    Login
-                  </button>
-                </SignInButton>
-                <SignUpButton mode="modal">
-                  <button className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors">
-                    Sign Up
-                  </button>
-                </SignUpButton>
-              </SignedOut>
-              <SignedIn>
-                <span className="text-gray-600">
-                  Welcome, {user?.username}!
-                </span>
-                <UserButton afterSignOutUrl="/" />
-              </SignedIn>
-            </div>
-          </div>
-        </div>
-      </div>
+      <Header />
 
       <div className="py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-3xl mx-auto">
@@ -137,28 +104,7 @@ const EULA: React.FC = () => {
       </div>
       </div>
 
-      {/* Footer */}
-      <div className="bg-gray-900 py-8">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center text-gray-400">
-            <div className="flex justify-center space-x-6 mb-4">
-              <Link 
-                to="/privacy" 
-                className="hover:text-white transition-colors"
-              >
-                Privacy Policy
-              </Link>
-              <Link 
-                to="/eula" 
-                className="hover:text-white transition-colors"
-              >
-                EULA
-              </Link>
-            </div>
-            <p>&copy; 2024 BookKeeper Pro. All rights reserved.</p>
-          </div>
-        </div>
-      </div>
+      <Footer />
     </div>
   );
 };
