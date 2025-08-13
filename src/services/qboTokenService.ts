@@ -81,7 +81,11 @@ export class QBOTokenService {
   private static refreshAttempts = new Map<string, number>();
   private static readonly MAX_REFRESH_ATTEMPTS = 3;
   private static readonly REFRESH_BACKOFF_MS = 2000;
-  private static readonly TOKEN_REFRESH_THRESHOLD_HOURS = 12; // 12 hours before expiry
+  private static get TOKEN_REFRESH_THRESHOLD_HOURS(): number {
+    const envValue = import.meta.env.VITE_QBO_TOKEN_REFRESH_THRESHOLD_HOURS;
+    const parsed = Number(envValue);
+    return !isNaN(parsed) && parsed > 0 ? parsed : 12; // 12 hours default
+  }
   
   /**
    * Get OAuth configuration from environment variables
