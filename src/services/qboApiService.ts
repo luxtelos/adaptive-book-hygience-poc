@@ -2033,6 +2033,30 @@ export class QBOApiService {
       );
     }
 
+    // Validate and refresh token if needed before making the request
+    if (this.clerkUserId) {
+      logger.debug('Validating token before QBO API request');
+      const isValid = await QBOTokenService.validateAndRefreshIfNeeded(this.clerkUserId);
+      
+      if (!isValid) {
+        logger.error('Token validation failed - token may be revoked or refresh failed');
+        throw new QBOError(
+          QBOErrorType.AUTHENTICATION_ERROR,
+          "Token validation failed. Please reconnect to QuickBooks.",
+          null,
+          false
+        );
+      }
+
+      // Get refreshed tokens if they were updated
+      const tokens = await QBOTokenService.getTokens(this.clerkUserId);
+      if (tokens && tokens.access_token !== this.accessToken) {
+        logger.info('Token was refreshed, updating service credentials');
+        this.accessToken = tokens.access_token;
+        this.realmId = tokens.realm_id;
+      }
+    }
+
     const { method, endpoint, params, data } = config;
 
     try {
