@@ -356,6 +356,39 @@ export class QBOTokenService {
   }
 
   /**
+   * Validate tokens and refresh if needed
+   * This should be called before any QBO API request
+   */
+  static async validateAndRefreshIfNeeded(clerkUserId: string): Promise<boolean> {
+    try {
+      logger.debug('Validating QBO tokens before API call', { clerkUserId });
+      
+      const tokens = await this.getTokens(clerkUserId);
+      if (!tokens) {
+        logger.warn('No tokens found for user', { clerkUserId });
+        return false;
+      }
+
+      // Check if tokens are expired or near expiry
+      if (this.isTokenExpired(tokens)) {
+        logger.info('Tokens are expired, attempting refresh', { clerkUserId });
+        return await this.refreshAccessToken(clerkUserId);
+      }
+
+      if (this.isTokenNearExpiry(tokens)) {
+        logger.info('Tokens near expiry, proactively refreshing', { clerkUserId });
+        return await this.refreshAccessToken(clerkUserId);
+      }
+
+      logger.debug('Tokens are valid', { clerkUserId });
+      return true;
+    } catch (error) {
+      logger.error('Error validating/refreshing tokens', error);
+      return false;
+    }
+  }
+
+  /**
    * Refresh access token using refresh token with comprehensive error handling
    */
   static async refreshAccessToken(clerkUserId: string): Promise<boolean> {
