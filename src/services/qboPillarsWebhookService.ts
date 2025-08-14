@@ -243,7 +243,8 @@ export async function fetchAllPillarsData(
       data = JSON.parse(responseText);
     } catch (parseError) {
       console.error('Failed to parse webhook response:', responseText);
-      throw new Error(`Invalid JSON response from webhook: ${parseError.message}`);
+      const errorMessage = parseError instanceof Error ? parseError.message : 'Unknown parse error';
+      throw new Error(`Invalid JSON response from webhook: ${errorMessage}`);
     }
     
     // Enhanced logging for debugging
