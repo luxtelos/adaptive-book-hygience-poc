@@ -3,7 +3,7 @@
  * @description Service for fetching all 5 pillars data via consolidated webhook
  * 
  * This service replaces multiple QBO API calls with a single webhook endpoint
- * that returns all required financial data for hygiene assessment.
+ * that returns all required financial data for accounting quality assessment.
  */
 
 import { QBOTokenService } from './qboTokenService';
