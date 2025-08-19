@@ -94,13 +94,24 @@ export class QBOTokenService {
    * SECURITY: Client secret is NOT included here - handled by N8N proxy backend
    */
   private static getOAuthConfig(): OAuthConfig {
+    const tokenEndpoint = import.meta.env.VITE_N8N_OAUTH_TOKEN_ENDPOINT;
+    const revokeEndpoint = import.meta.env.VITE_N8N_OAUTH_REVOKE_ENDPOINT;
+    const clientId = import.meta.env.VITE_QBO_CLIENT_ID;
+
+    if (!tokenEndpoint) {
+      throw new Error('VITE_N8N_OAUTH_TOKEN_ENDPOINT environment variable is required');
+    }
+    if (!revokeEndpoint) {
+      throw new Error('VITE_N8N_OAUTH_REVOKE_ENDPOINT environment variable is required');
+    }
+    if (!clientId) {
+      throw new Error('VITE_QBO_CLIENT_ID environment variable is required');
+    }
+
     return {
-      // Use N8N proxy endpoints that handle client secret server-side
-      tokenEndpoint: import.meta.env.VITE_N8N_OAUTH_TOKEN_ENDPOINT || 
-        'https://n8n-1-102-1-c1zi.onrender.com/webhook/oauth/refresh',
-      revokeEndpoint: import.meta.env.VITE_N8N_OAUTH_REVOKE_ENDPOINT || 
-        'https://n8n-1-102-1-c1zi.onrender.com/webhook/oauth/revoke',
-      clientId: import.meta.env.VITE_QBO_CLIENT_ID || ''
+      tokenEndpoint,
+      revokeEndpoint,
+      clientId
     };
   }
   
