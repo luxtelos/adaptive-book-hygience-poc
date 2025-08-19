@@ -473,11 +473,34 @@ const Assessment = ({
       );
     } catch (error) {
       logger.error("Error fetching financial data via webhook:", error);
-      setDataFetchError(
-        error instanceof Error
-          ? error.message
-          : "Failed to fetch financial data from webhook",
-      );
+      const errorMessage = error instanceof Error ? error.message : "Failed to fetch financial data from webhook";
+      setDataFetchError(errorMessage);
+
+      // Check if this is an authentication error that requires re-auth
+      if (errorMessage.toLowerCase().includes('authentication') || 
+          errorMessage.toLowerCase().includes('reconnect')) {
+        logger.info("Authentication error detected, clearing tokens and redirecting to QBO auth");
+        
+        // Clear the invalid tokens
+        if (user?.id) {
+          try {
+            await QBOTokenService.clearTokens(user.id);
+            logger.info("Cleared invalid QBO tokens");
+          } catch (clearError) {
+            logger.error("Error clearing tokens:", clearError);
+          }
+        }
+        
+        // Redirect to QBO auth after a short delay to show the error
+        setTimeout(() => {
+          navigate('/qbo-auth', { 
+            state: { 
+              formData, 
+              error: 'Your QuickBooks session has expired. Please reconnect to continue.' 
+            } 
+          });
+        }, 2000);
+      }
 
       // Mark all pillars as error
       setPillarImportStatus((prevStatus) => {

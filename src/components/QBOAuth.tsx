@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { useUser } from "@clerk/clerk-react";
 import {
   Link2Icon,
@@ -61,9 +61,11 @@ const QBOAuth: React.FC<QBOAuthProps> = ({
   authError,
 }) => {
   const navigate = useNavigate();
+  const location = useLocation();
   const { user, isLoaded } = useUser();
   const [isCheckingTokens, setIsCheckingTokens] = useState(true);
   const [storedTokens, setStoredTokens] = useState<StoredQBOTokens | null>(null);
+  const [reauthError, setReauthError] = useState<string | null>(null);
 
   console.log("🟢 QBOAuth component is rendering!");
   console.log("QBOAuth props:", {
@@ -73,6 +75,15 @@ const QBOAuth: React.FC<QBOAuthProps> = ({
     realmId,
     authError,
   });
+
+  // Check for re-auth error from navigation state
+  useEffect(() => {
+    if (location.state?.error) {
+      setReauthError(location.state.error);
+      // Clear the error from location state
+      navigate(location.pathname, { replace: true, state: { formData: location.state?.formData } });
+    }
+  }, [location.state, navigate, location.pathname]);
 
   // Check for existing stored tokens on component mount
   useEffect(() => {
@@ -296,17 +307,17 @@ const QBOAuth: React.FC<QBOAuthProps> = ({
             )}
 
             {/* Error State */}
-            {authError && (
+            {(authError || reauthError) && (
               <div className="bg-red-50 border border-red-200 rounded-lg p-6 text-center">
                 <ExclamationTriangleIcon className="w-12 h-12 text-red-600 mx-auto mb-4" />
                 <h3 className="text-xl font-semibold text-gray-900 mb-2">
-                  Connection Failed
+                  {reauthError ? 'Re-authentication Required' : 'Connection Failed'}
                 </h3>
                 <p className="text-gray-600 mb-4">
-                  We encountered an issue connecting to your QuickBooks account:
+                  {reauthError ? 'Your QuickBooks session needs to be renewed:' : 'We encountered an issue connecting to your QuickBooks account:'}
                 </p>
                 <div className="bg-white rounded-lg p-4 mb-6">
-                  <p className="text-red-700 font-medium">{authError}</p>
+                  <p className="text-red-700 font-medium">{reauthError || authError}</p>
                 </div>
                 <div className="space-y-3">
                   <button

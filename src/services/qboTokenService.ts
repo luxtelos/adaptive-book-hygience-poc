@@ -262,6 +262,13 @@ export class QBOTokenService {
   }
 
   /**
+   * Clear tokens for a user (alias for clearUserData)
+   */
+  static async clearTokens(clerkUserId: string): Promise<boolean> {
+    return this.clearUserData(clerkUserId);
+  }
+
+  /**
    * Clear all QBO data for a user (called on logout)
    */
   static async clearUserData(clerkUserId: string): Promise<boolean> {
@@ -542,22 +549,39 @@ export class QBOTokenService {
       errorBody = { error: 'unknown_error', error_description: await response.text() };
     }
 
-    const errorType = this.mapOAuthError(errorBody.error || 'unknown_error');
+    // Handle N8N webhook error format
+    let oauthError = errorBody.error;
+    let errorDescription = errorBody.error_description;
+    
+    // Check if this is an N8N-wrapped error response
+    if (errorBody.errorDescription === 'invalid_grant' || 
+        errorBody.errorDetails?.rawErrorMessage?.[0]?.includes('invalid_grant')) {
+      oauthError = 'invalid_grant';
+      errorDescription = 'Incorrect Token type or clientID - tokens were created with a different app';
+    }
+
+    const errorType = this.mapOAuthError(oauthError || 'unknown_error');
     const isRetryable = this.isRetryableError(errorType, response.status);
     const requiresReauth = this.requiresReauthentication(errorType);
 
     logger.error('Token refresh failed', {
       status: response.status,
-      error: errorBody.error,
-      description: errorBody.error_description,
+      error: oauthError,
+      description: errorDescription,
       type: errorType,
       isRetryable,
       requiresReauth
     });
 
+    // For invalid_grant errors, immediately clear tokens (no retry needed)
+    if (errorType === OAuthErrorType.INVALID_GRANT) {
+      logger.info('Invalid grant detected - clearing invalid tokens for re-authentication');
+      await this.deactivateExistingTokens(clerkUserId);
+    }
+
     throw new OAuthTokenError(
       errorType,
-      errorBody.error_description || errorBody.error || `HTTP ${response.status}: Token refresh failed`,
+      errorDescription || oauthError || `HTTP ${response.status}: Token refresh failed`,
       errorBody,
       isRetryable,
       requiresReauth
