@@ -1,6 +1,6 @@
 /**
  * @file hygiene.ts
- * @description TypeScript interfaces for Financial Books Hygiene Assessment
+ * @description TypeScript interfaces for Accounting Quality Assessment
  * 
  * Defines the type system for the Day-30 Readiness Scoring Model
  * and all related assessment data structures.
@@ -76,7 +76,7 @@ export interface AssessmentMetadata {
 }
 
 /**
- * Complete hygiene assessment result.
+ * Complete accounting quality assessment result.
  */
 export interface HygieneAssessmentResult {
   overallScore: number;                    // 0-100 composite score
@@ -92,7 +92,7 @@ export interface HygieneAssessmentResult {
 // =================================================================================
 
 /**
- * QBO data package required for hygiene assessment.
+ * QBO data package required for accounting quality assessment.
  */
 export interface QBODataPackage {
   // Core required data
@@ -107,7 +107,7 @@ export interface QBODataPackage {
   // Control and audit data
   auditLog?: QBOAuditLogEntry[];
   
-  // Additional hygiene-specific data (may be limited by API availability)
+  // Additional accounting quality-specific data (may be limited by API availability)
   bankReconciliation?: QBOBankReconciliation[];
   openingBalanceEquity?: QBOOpeningBalanceEquity;
   undepositedFunds?: QBOUndepositedFundsEntry[];
@@ -299,7 +299,7 @@ export interface AssessmentConfig {
 // =================================================================================
 
 /**
- * Response from the hygiene assessment API.
+ * Response from the accounting quality assessment API.
  */
 export interface HygieneAssessmentApiResponse {
   success: boolean;
