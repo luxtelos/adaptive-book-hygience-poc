@@ -270,7 +270,7 @@ const QBOAuth: React.FC<QBOAuthProps> = ({
                   financial assessment.
                 </p>
                 <button
-                  onClick={loginWithQuickBooks}
+                  onClick={() => loginWithQuickBooks()}
                   className="bg-green-600 text-white px-8 py-3 rounded-lg hover:bg-green-700 transition-colors flex items-center mx-auto text-lg font-semibold"
                 >
                   <Link2Icon className="w-5 h-5 mr-2" />
