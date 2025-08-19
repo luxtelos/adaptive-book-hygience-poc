@@ -135,14 +135,20 @@ sequenceDiagram
     Frontend->>User: Agent Form
     User->>Frontend: Business Information
     
-    %% Phase 3: QBO OAuth
-    Frontend->>QBO_Proxy: OAuth Initiate
-    QBO_Proxy->>QBO: OAuth Request
+    %% Phase 3: QBO OAuth (Secure Flow)
+    Frontend->>Frontend: Generate CSRF State Token
+    Frontend->>QBO: OAuth Authorization Request
+    Note over Frontend,QBO: Direct browser redirect with state
     QBO->>User: Authorization UI
     User->>QBO: Grant Permission
-    QBO->>QBO_Proxy: OAuth Callback
+    QBO->>QBO_Proxy: OAuth Callback with Code
+    Note over QBO_Proxy: Client secret handled server-side
+    QBO_Proxy->>QBO: Exchange Code for Tokens
+    QBO->>QBO_Proxy: Access & Refresh Tokens
     QBO_Proxy->>Supabase: Store Encrypted Tokens
-    QBO_Proxy->>Frontend: OAuth Success
+    QBO_Proxy->>Frontend: Redirect to /oauth-callback
+    Frontend->>Frontend: Validate CSRF State
+    Frontend->>Frontend: Navigate to /assessment
     
     %% Phase 4: Data Extraction (Parallel)
     par Financial Reports
@@ -314,13 +320,27 @@ flowchart TD
 ### Core QuickBooks API Integration
 
 #### Authentication & Token Management
+
+#### OAuth 2.0 Security Architecture
+**IMPORTANT**: The client secret is NEVER exposed in the frontend. All OAuth operations requiring the client secret are handled through the N8N proxy backend.
+
 ```typescript
-// Token storage structure
+// Token storage structure (Supabase)
 interface QBOTokenData {
   access_token: string;     // Encrypted in Supabase
-  refresh_token: string;    // Encrypted in Supabase
+  refresh_token: string;    // Encrypted in Supabase  
   realm_id: string;         // Company ID
-  expires_at: number;       // Unix timestamp
+  expires_at: string;       // ISO timestamp
+  expires_in: number;       // Seconds until expiry
+}
+
+// OAuth Configuration (Frontend - NO CLIENT SECRET)
+interface OAuthConfig {
+  tokenEndpoint: string;    // N8N proxy endpoint (handles client secret)
+  revokeEndpoint: string;   // N8N proxy endpoint (handles client secret)
+  clientId: string;         // Public client ID (safe for frontend)
+  clientSecret: '';         // NEVER exposed in frontend
+  isSandbox: boolean;       // Sandbox vs Production mode
 }
 
 // Rate limiter configuration
@@ -330,7 +350,54 @@ const RATE_LIMIT_CONFIG = {
   maxRetries: 3,
   backoffMultiplier: 2
 };
+
+// Token refresh configuration
+const TOKEN_REFRESH_CONFIG = {
+  thresholdHours: 12,      // Refresh when within 12 hours of expiry
+  maxAttempts: 3,          // Maximum refresh retry attempts
+  backoffMs: 2000          // Initial backoff delay
+};
 ```
+
+#### OAuth Discovery Documents
+
+QuickBooks provides OAuth Discovery documents for automatic endpoint configuration:
+
+| Environment | Discovery URL | Purpose |
+|------------|--------------|----------|
+| **Production** | `https://developer.api.intuit.com/.well-known/openid_configuration` | Production OAuth endpoints |
+| **Sandbox** | `https://developer.api.intuit.com/.well-known/openid_sandbox_configuration` | Sandbox OAuth endpoints |
+
+**Key Endpoints from Discovery:**
+- Authorization: `https://appcenter.intuit.com/connect/oauth2/authorize`
+- Token: `https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer` (Production)
+- Token: `https://sandbox-quickbooks.api.intuit.com/oauth2/v1/tokens/bearer` (Sandbox)
+- Revoke: `https://developer.api.intuit.com/v2/oauth2/tokens/revoke`
+
+**N8N Proxy Endpoints (Frontend Usage):**
+- Token Refresh: `https://your-n8n-proxy.com/webhook/oauth/refresh`
+- Token Revoke: `https://your-n8n-proxy.com/webhook/oauth/revoke`
+
+#### OAuth Error Handling
+
+Comprehensive OAuth error handling with automatic recovery:
+
+| Error Type | Description | Handling Strategy | User Impact |
+|------------|-------------|-------------------|-------------|
+| **invalid_grant** | Refresh token expired/invalid | Require re-authentication | Must reconnect QuickBooks |
+| **invalid_request** | Malformed request | Log and retry with backoff | Automatic retry |
+| **invalid_client** | Client credentials invalid | Check configuration | Contact support |
+| **unauthorized_client** | Client not authorized | Verify app permissions | Check QBO app settings |
+| **server_error** | QBO server issues | Exponential backoff retry | Automatic retry |
+| **temporarily_unavailable** | Service temporarily down | Retry with backoff | Wait and retry |
+| **expired_token** | Access token expired | Automatic refresh | Transparent to user |
+| **network_error** | Connection issues | Retry with backoff | Automatic retry |
+
+**Automatic Token Refresh:**
+- Tokens refreshed when within 12 hours of expiry
+- Background refresh process with no user interruption
+- Maximum 3 retry attempts with exponential backoff
+- Automatic re-authentication prompt if refresh fails
 
 #### Financial Reports API Calls
 
@@ -356,6 +423,65 @@ const RATE_LIMIT_CONFIG = {
 | `/v3/company/{realmId}/reports/TransactionList` | `account`, `start_date`, `end_date`, `cleared`, `sort` | Transaction details with reconciliation status | 1-5 requests |
 | `/v3/company/{realmId}/query` | `SELECT * FROM JournalEntry WHERE TxnDate >= '{date}'` | Manual journal entries | 1 request |
 | `/v3/company/{realmId}/query` | `SELECT * FROM Account` | Complete chart of accounts | 1 request |
+
+#### Consolidated 5-Pillar Webhook Integration
+
+The application uses a consolidated N8N webhook to fetch all QuickBooks data in a single request, organizing it into the 5-pillar assessment framework:
+
+**Webhook Endpoint:** `VITE_QBO_PILLARS_WEBHOOK_URL`
+
+**Request Parameters:**
+- `realmId`: Company ID from OAuth tokens
+- `token`: Access token for QBO API
+- `days`: Number of days to fetch (default: 90)
+
+**Response Structure:**
+```typescript
+interface WebhookResponse {
+  pillarData: {
+    reconciliation: {      // Pillar 1: Bank/CC reconciliation
+      variance: Array<...>,
+      byAccount: Array<...>,
+      hasTransactionData: boolean
+    },
+    chartIntegrity: {      // Pillar 2: Chart of Accounts validation
+      totals: { accounts: number },
+      duplicates: { name: string[], acctNum: string[] },
+      missingDetail: Array<...>
+    },
+    categorization: {      // Pillar 3: Transaction categorization
+      uncategorized: {
+        'Uncategorized Expense': { count, amount },
+        'Uncategorized Income': { count, amount },
+        'Ask My Accountant': { count, amount }
+      }
+    },
+    controlAccounts: {     // Pillar 4: Control account accuracy
+      openingBalanceEquity: { balance, accountId },
+      undepositedFunds: { balance, accountId },
+      ar: { balance, accountId },
+      ap: { balance, accountId }
+    },
+    arApValidity: {        // Pillar 5: A/R A/P aging analysis
+      arAging: { current, d1_30, d31_60, d61_90, d90_plus },
+      apAging: { current, d1_30, d31_60, d61_90, d90_plus }
+    }
+  },
+  meta: {
+    realmId: string,
+    start_date: string,
+    end_date: string,
+    windowDays: number
+  }
+}
+```
+
+**Data Flow:**
+1. Frontend requests all pillars via single webhook call
+2. N8N proxy fetches multiple QBO reports in parallel
+3. Raw QBO data organized into 5-pillar structure (NO transformation)
+4. Data passed directly to LLM for assessment
+5. LLM analyzes raw QuickBooks data as-is
 
 ### API Rate Limiting Strategy
 
@@ -569,10 +695,15 @@ sequenceDiagram
     Frontend->>Clerk: Authenticate User
     Clerk-->>Frontend: Secure Session Token
     
-    Note over Frontend,Supabase: OAuth Token Management
+    Note over Frontend,Supabase: OAuth Token Management (Client Secret Protected)
     
-    Frontend->>N8N_Proxy: Initiate QBO OAuth (HTTPS)
-    N8N_Proxy->>QBO: OAuth Request (TLS 1.3)
+    Frontend->>Frontend: Generate CSRF State Token
+    Frontend->>QBO: OAuth Authorization (Browser Redirect)
+    QBO->>User: Consent Screen
+    User->>QBO: Grant Access
+    QBO->>N8N_Proxy: Callback with Auth Code
+    Note over N8N_Proxy: Client secret used here (server-side only)
+    N8N_Proxy->>QBO: Exchange Code for Tokens (with Client Secret)
     QBO-->>N8N_Proxy: OAuth Tokens (Encrypted)
     N8N_Proxy->>Supabase: Store Tokens (AES-256-GCM)
     
@@ -613,8 +744,10 @@ const SECURITY_CONFIG = {
     credentials: true
   },
   encryption: 'AES-256-GCM',
-  tokenExpiration: 3600, // 1 hour
-  refreshThreshold: 300   // 5 minutes
+  tokenExpiration: 43200,    // 12 hours (QBO default)
+  refreshThreshold: 43200,   // 12 hours before expiry
+  csrfProtection: true,       // State parameter validation
+  clientSecretLocation: 'N8N_PROXY_ONLY' // Never in frontend
 };
 ```
 
@@ -627,6 +760,8 @@ const SECURITY_CONFIG = {
 | **Transport Security** | TLS 1.3 | Secure data transmission | PCI DSS |
 | **Rate Limiting** | 450 req/min with backoff | Prevent API abuse | OWASP Top 10 |
 | **Session Management** | Secure JWT tokens | Maintain user sessions | NIST Cybersecurity Framework |
+| **CSRF Protection** | State parameter validation | Prevent cross-site attacks | OAuth 2.0 RFC 6749 |
+| **Client Secret Protection** | Server-side only (N8N proxy) | Prevent credential exposure | OAuth 2.0 Best Practices |
 | **Data Retention** | Ephemeral processing | Privacy protection | CCPA/GDPR Ready |
 
 ### Professional Compliance Features

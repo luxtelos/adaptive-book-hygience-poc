@@ -35,11 +35,60 @@ const OAuthCallback: React.FC<OAuthCallbackProps> = ({
 
     const processAuth = async () => {
       const params = new URLSearchParams(location.search);
-      const qbTokens = params.get("qb_tokens");
+      
+      // Check if we have the QBO tokens in the URL (from N8N redirect)
+      const qbTokensParam = params.get("qb_tokens");
+      
+      // Fallback to individual params if no qb_tokens
+      const code = params.get("code");
       const error = params.get("error");
       const state = params.get("state");
+      const realmId = params.get("realmId") || params.get("realm_id");
+      
+      // Check for tokens from N8N redirect
+      if (qbTokensParam) {
+        try {
+          const tokens = JSON.parse(decodeURIComponent(qbTokensParam));
+          logger.debug("Received tokens from N8N:", tokens);
+          
+          if (!isLoaded || !user) {
+            logger.debug("User not loaded yet, waiting...");
+            return;
+          }
+          
+          // Store tokens in Supabase
+          const tokenData = {
+            access_token: tokens.access_token,
+            refresh_token: tokens.refresh_token || null,
+            realm_id: tokens.realm_id || realmId,
+            token_type: tokens.token_type || 'Bearer',
+            expires_in: tokens.expires_in || 3600
+          };
 
-      logger.debug("OAuth callback - code received:", qbTokens);
+          const stored = await QBOTokenService.storeTokens(user.id, tokenData);
+        
+          if (stored) {
+            // Clear any previous errors and set state
+            setError(null);
+            setAccessToken(tokens.access_token);
+            setRefreshToken(tokens.refresh_token || null);
+            setRealmId(tokens.realm_id || realmId);
+
+            logger.info("Successfully processed and stored OAuth tokens from N8N, navigating to assessment");
+            navigate("/assessment");
+            return;
+          } else {
+            throw new Error("Failed to store tokens in database");
+          }
+        } catch (err) {
+          logger.error("Failed to process tokens from N8N:", err);
+          setError("Failed to complete QuickBooks authentication. Please try again.");
+          navigate("/qbo-auth");
+          return;
+        }
+      }
+
+      logger.debug("OAuth callback - code received:", code);
       logger.debug("OAuth callback - error received:", error);
       logger.debug("OAuth callback - state received:", state);
 
@@ -86,44 +135,15 @@ const OAuthCallback: React.FC<OAuthCallbackProps> = ({
         logger.info("Redirecting to QBO Auth page due to error");
       }
 
-      if (qbTokens) {
-        try {
-          if (!isLoaded || !user) {
-            logger.debug("User not loaded yet, waiting...");
-            return;
-          }
-
-          const decodeQbTokens = JSON.parse(decodeURIComponent(qbTokens));
-          logger.debug("Decoded QB tokens:", decodeQbTokens);
-
-          // Store tokens in Supabase
-          const tokenData = {
-            access_token: decodeQbTokens.access_token,
-            refresh_token: decodeQbTokens.refresh_token || null,
-            realm_id: decodeQbTokens.realm_id,
-            token_type: decodeQbTokens.token_type || 'Bearer',
-            expires_in: decodeQbTokens.expires_in
-          };
-
-          const stored = await QBOTokenService.storeTokens(user.id, tokenData);
+      if (code && realmId) {
+        // This should not happen if N8N is configured correctly
+        // The N8N webhook should handle the code exchange and redirect with tokens
+        logger.warn("Received authorization code directly - N8N webhook may not be configured correctly");
+        logger.warn("The OAuth flow should go through N8N webhook for token exchange");
         
-        if (stored) {
-          // Clear any previous errors and set state
-          setError(null);
-          setAccessToken(decodeQbTokens.access_token);
-          setRefreshToken(decodeQbTokens.refresh_token || null);
-          setRealmId(decodeQbTokens.realm_id);
-
-          logger.info("Successfully processed and stored OAuth tokens, navigating to assessment");
-          navigate("/assessment");
-        } else {
-          throw new Error("Failed to store tokens in database");
-        }
-      } catch (parseError) {
-        logger.error("Failed to parse or store QB tokens:", parseError);
-        setError("Failed to process QuickBooks authentication");
+        // Show error to user
+        setError("OAuth configuration error. Please contact support.");
         navigate("/qbo-auth");
-      }
 
       // fetch(`${POST_LOGIN_REDIRECT}?code=${code}`, {
       //   method: "GET",
@@ -160,7 +180,7 @@ const OAuthCallback: React.FC<OAuthCallbackProps> = ({
       //     navigate('/qbo-auth');
       //   });
       } else {
-        logger.error("No authorization code received from QuickBooks");
+        logger.error("No authorization code or realm ID received from QuickBooks", { code, realmId });
         setError("No authorization code received from QuickBooks");
         navigate("/qbo-auth");
       }
