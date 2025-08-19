@@ -71,7 +71,9 @@ const DaysFilter: React.FC<DaysFilterProps> = ({
       { label: 'Quarter to Date', value: quarterToDateDays, description: `Current quarter (${quarterToDateDays} days)` },
       { label: 'Year to Date', value: yearToDateDays, description: `Since Jan 1 (${yearToDateDays} days)` },
       { label: '90 days (3 months)', value: 90, description: 'Standard quarterly view' },
+      { label: '120 days (4 months)', value: 120, description: 'Extended quarterly view' },
       { label: '180 days (6 months)', value: 180, description: 'Semi-annual view' },
+      { label: '365 days (1 year)', value: 365, description: 'Full annual view' },
     ];
   };
 
