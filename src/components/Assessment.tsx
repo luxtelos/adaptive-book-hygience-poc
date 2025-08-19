@@ -826,12 +826,12 @@ const Assessment = ({
                 <span className="px-3 py-1 text-sm bg-green-100 text-green-800 rounded-full">
                   QuickBooks Connected
                 </span>
-                <button
+                {/* <button
                   onClick={() => navigate("/qbo-auth")}
                   className="text-gray-600 hover:text-gray-900 text-sm"
                 >
                   Settings
-                </button>
+                </button> */}
               </div>
             </div>
           </div>

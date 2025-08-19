@@ -134,12 +134,9 @@ const QBOAuth: React.FC<QBOAuthProps> = ({
     console.log("SCOPE:", SCOPE);
     console.log("AUTH_BASE_URL:", AUTH_BASE_URL);
     
-    // Ensure AUTH_BASE_URL has the /authorize endpoint
-    const baseUrl = AUTH_BASE_URL?.endsWith('/authorize') 
-      ? AUTH_BASE_URL 
-      : AUTH_BASE_URL?.endsWith('/oauth2')
-        ? `${AUTH_BASE_URL}/authorize`
-        : 'https://appcenter.intuit.com/connect/oauth2/authorize';
+    // QuickBooks OAuth URL - DO NOT add /authorize!
+    // The correct URL is https://appcenter.intuit.com/connect/oauth2 (without /authorize)
+    const baseUrl = AUTH_BASE_URL || 'https://appcenter.intuit.com/connect/oauth2';
     
     console.log("Fixed Auth Base URL:", baseUrl);
     

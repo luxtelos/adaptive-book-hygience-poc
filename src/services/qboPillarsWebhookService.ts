@@ -174,7 +174,16 @@ export async function fetchAllPillarsData(
       throw new Error('VITE_QBO_PILLARS_WEBHOOK_URL environment variable is not configured');
     }
 
-    // Get QBO tokens
+    // Validate and refresh tokens if needed before making the request
+    logger.debug('Validating tokens before webhook request');
+    const isValid = await QBOTokenService.validateAndRefreshIfNeeded(clerkUserId);
+    
+    if (!isValid) {
+      logger.error('Token validation failed - tokens may be revoked or refresh failed');
+      throw new Error('QuickBooks authentication failed. Please reconnect to QuickBooks.');
+    }
+
+    // Get QBO tokens (may have been refreshed)
     const tokens = await QBOTokenService.getTokens(clerkUserId);
     if (!tokens || !tokens.access_token || !tokens.realm_id) {
       throw new Error('QuickBooks authentication required');
@@ -222,7 +231,21 @@ export async function fetchAllPillarsData(
       throw new Error(`Webhook failed: ${response.status} ${response.statusText}`);
     }
 
-    const data = await response.json();
+    // Check for empty response before parsing
+    const responseText = await response.text();
+    if (!responseText || responseText.trim() === '') {
+      console.error('Webhook returned empty response');
+      throw new Error('Webhook returned empty response. Please check if the N8N workflow is active and configured correctly.');
+    }
+
+    let data;
+    try {
+      data = JSON.parse(responseText);
+    } catch (parseError) {
+      console.error('Failed to parse webhook response:', responseText);
+      const errorMessage = parseError instanceof Error ? parseError.message : 'Unknown parse error';
+      throw new Error(`Invalid JSON response from webhook: ${errorMessage}`);
+    }
     
     // Enhanced logging for debugging
     console.log('🔍 Raw webhook response structure:', {
