@@ -477,26 +477,18 @@ const Assessment = ({
       setDataFetchError(errorMessage);
 
       // Check if this is an authentication error that requires re-auth
-      if (errorMessage.toLowerCase().includes('authentication') || 
+      if (errorMessage.toLowerCase().includes('expired') || 
+          errorMessage.toLowerCase().includes('authentication') || 
           errorMessage.toLowerCase().includes('reconnect')) {
-        logger.info("Authentication error detected, clearing tokens and redirecting to QBO auth");
+        logger.info("Authentication error detected, tokens already cleared by service");
         
-        // Clear the invalid tokens
-        if (user?.id) {
-          try {
-            await QBOTokenService.clearTokens(user.id);
-            logger.info("Cleared invalid QBO tokens");
-          } catch (clearError) {
-            logger.error("Error clearing tokens:", clearError);
-          }
-        }
-        
+        // Tokens are already cleared by the service, just redirect
         // Redirect to QBO auth after a short delay to show the error
         setTimeout(() => {
           navigate('/qbo-auth', { 
             state: { 
               formData, 
-              error: 'Your QuickBooks session has expired. Please reconnect to continue.' 
+              error: errorMessage 
             } 
           });
         }, 2000);

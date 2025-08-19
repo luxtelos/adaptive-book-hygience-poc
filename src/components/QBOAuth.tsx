@@ -92,6 +92,26 @@ const QBOAuth: React.FC<QBOAuthProps> = ({
         return;
       }
 
+      // Skip token check if we have a re-auth error (user was redirected here to re-authenticate)
+      // or if there's any auth error
+      if (reauthError || authError) {
+        logger.info("Skipping token check due to authentication error");
+        setIsCheckingTokens(false);
+        return;
+      }
+
+      // Also skip if URL has a force parameter (for manual reconnection)
+      const urlParams = new URLSearchParams(window.location.search);
+      if (urlParams.get('force') === 'true') {
+        logger.info("Skipping token check due to force parameter");
+        setIsCheckingTokens(false);
+        // Clear tokens for fresh start
+        if (user?.id) {
+          await QBOTokenService.clearTokens(user.id);
+        }
+        return;
+      }
+
       try {
         setIsCheckingTokens(true);
         logger.debug("Checking for existing QBO tokens...");
@@ -136,9 +156,22 @@ const QBOAuth: React.FC<QBOAuthProps> = ({
     }
   }, [accessToken, navigate]);
 
-  const loginWithQuickBooks = () => {
-    console.log("🔴 loginWithQuickBooks CALLED!");
+  const loginWithQuickBooks = async (forceClearTokens = false) => {
+    console.log("🔴 loginWithQuickBooks CALLED!", { forceClearTokens });
     console.trace("Stack trace for loginWithQuickBooks call");
+    
+    // If forceClearTokens is true, clear any existing tokens first
+    if (forceClearTokens && user?.id) {
+      console.log("Force clearing existing QBO tokens before re-authentication");
+      try {
+        await QBOTokenService.clearTokens(user.id);
+        logger.info("Cleared existing QBO tokens for fresh authentication");
+      } catch (error) {
+        logger.error("Error clearing tokens before re-auth:", error);
+        // Continue with OAuth flow even if clearing fails
+      }
+    }
+    
     console.log("Environment variables at redirect time:");
     console.log("CLIENT_ID:", CLIENT_ID);
     console.log("REDIRECT_URI:", REDIRECT_URI);
@@ -321,11 +354,11 @@ const QBOAuth: React.FC<QBOAuthProps> = ({
                 </div>
                 <div className="space-y-3">
                   <button
-                    onClick={loginWithQuickBooks}
+                    onClick={() => loginWithQuickBooks(true)} // Force clear tokens and reconnect
                     className="bg-green-600 text-white px-6 py-2 rounded-lg hover:bg-green-700 transition-colors mr-3"
                   >
                     <ReloadIcon className="w-4 h-4 mr-2 inline" />
-                    Try Again
+                    Reconnect to QuickBooks
                   </button>
                   <button
                     onClick={() => navigate("/assessment")}

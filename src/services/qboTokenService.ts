@@ -390,12 +390,25 @@ export class QBOTokenService {
       // Check if tokens are expired or near expiry
       if (this.isTokenExpired(tokens)) {
         logger.info('Tokens are expired, attempting refresh', { clerkUserId });
-        return await this.refreshAccessToken(clerkUserId);
+        try {
+          return await this.refreshAccessToken(clerkUserId);
+        } catch (refreshError: any) {
+          // If refresh fails on expired tokens, clear them for fresh OAuth
+          logger.error('Failed to refresh expired tokens, clearing for re-authentication', refreshError);
+          await this.clearTokens(clerkUserId);
+          return false;
+        }
       }
 
       if (this.isTokenNearExpiry(tokens)) {
         logger.info('Tokens near expiry, proactively refreshing', { clerkUserId });
-        return await this.refreshAccessToken(clerkUserId);
+        try {
+          return await this.refreshAccessToken(clerkUserId);
+        } catch (refreshError: any) {
+          // If it's near expiry and refresh fails, we can still try using the existing token
+          logger.warn('Failed to proactively refresh tokens, will use existing tokens', refreshError);
+          return true; // Return true to try with existing tokens
+        }
       }
 
       logger.debug('Tokens are valid', { clerkUserId });
