@@ -480,14 +480,45 @@ export class QBOTokenService {
         // client_secret is added server-side by N8N proxy for security
       };
 
-      const response = await fetch(config.tokenEndpoint, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'User-Agent': 'Adaptive-Book-Hygiene/1.0.0'
-        },
-        body: JSON.stringify(requestBody)
-      });
+      // Add AbortController for timeout
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+
+      let response: Response;
+      try {
+        response = await fetch(config.tokenEndpoint, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'User-Agent': 'Adaptive-Book-Hygiene/1.0.0'
+          },
+          body: JSON.stringify(requestBody),
+          signal: controller.signal
+        });
+      } catch (error: any) {
+        clearTimeout(timeoutId);
+        
+        // Handle timeout or network errors
+        if (error.name === 'AbortError') {
+          logger.error('Token refresh request timed out');
+        } else {
+          logger.error('Network error during token refresh', error);
+        }
+        
+        // Treat timeout/network errors as invalid grant - clear tokens and require re-auth
+        logger.info('Clearing tokens due to refresh failure, re-authentication required');
+        await this.deactivateExistingTokens(clerkUserId);
+        
+        throw new OAuthTokenError(
+          OAuthErrorType.INVALID_GRANT,
+          'Token refresh failed - re-authentication required',
+          error,
+          false,
+          true
+        );
+      } finally {
+        clearTimeout(timeoutId);
+      }
 
       if (!response.ok) {
         await this.handleRefreshError(response, clerkUserId);
