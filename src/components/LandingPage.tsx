@@ -19,6 +19,8 @@ import {
 } from "@radix-ui/react-icons";
 import { useUserAssessment } from "../hooks/useUserAssessment";
 import logger from "../lib/logger";
+import Header from "./Header";
+import Footer from "./Footer";
 
 const LandingPage: React.FC = () => {
   const navigate = useNavigate();
@@ -43,38 +45,7 @@ const LandingPage: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
-      {/* Header */}
-      <div className="bg-white shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center py-4">
-            <div className="flex items-center">
-              <h1 className="text-2xl font-bold text-gray-900">
-                BookKeeper Pro
-              </h1>
-            </div>
-            <div className="flex items-center space-x-4">
-              <SignedOut>
-                <SignInButton mode="modal">
-                  <button className="text-gray-600 hover:text-gray-900">
-                    Login
-                  </button>
-                </SignInButton>
-                <SignUpButton mode="modal">
-                  <button className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors">
-                    Sign Up
-                  </button>
-                </SignUpButton>
-              </SignedOut>
-              <SignedIn>
-                <span className="text-gray-600">
-                  Welcome, {user?.username}!
-                </span>
-                <UserButton afterSignOutUrl="/" />
-              </SignedIn>
-            </div>
-          </div>
-        </div>
-      </div>
+      <Header />
 
       {/* Hero Section */}
       <div className="relative overflow-hidden">
@@ -326,7 +297,7 @@ const LandingPage: React.FC = () => {
       </SignedOut>
 
       {/* Dashboard Section - Only show to signed in users */}
-      <SignedIn>
+      {/* <SignedIn>
         <div className="bg-gray-50 py-16">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="text-center mb-12">
@@ -409,7 +380,7 @@ const LandingPage: React.FC = () => {
             </div>
           </div>
         </div>
-      </SignedIn>
+      </SignedIn> */}
 
       {/* Social Proof */}
       <div className="bg-white py-16">
@@ -578,14 +549,7 @@ const LandingPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Footer */}
-      <div className="bg-gray-900 py-8">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center text-gray-400">
-            <p>&copy; 2024 BookKeeper Pro. All rights reserved.</p>
-          </div>
-        </div>
-      </div>
+      <Footer />
     </div>
   );
 };
