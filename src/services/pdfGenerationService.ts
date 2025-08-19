@@ -60,7 +60,7 @@ export class PDFGenerationService {
     const assessmentId = `assessment_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
     // Format following the OUTPUT FORMAT SPECIFICATION from the prompt
-    let markdown = `# FINANCIAL BOOKS HYGIENE ASSESSMENT REPORT
+    let markdown = `# ACCOUNTING QUALITY ASSESSMENT REPORT
 
 **Company:** ${company}  
 **Assessment Date:** ${currentDate.toISOString()}
@@ -69,7 +69,7 @@ export class PDFGenerationService {
 
 ## SECTION 1: EXECUTIVE SUMMARY (Business Owner)
 
-### FINANCIAL BOOKS HEALTH ASSESSMENT
+### ACCOUNTING QUALITY ASSESSMENT
 
 **Overall Health Score:** ${assessmentResult.overallScore}/100 - ${assessmentResult.businessOwnerSummary.healthScore || assessmentResult.readinessStatus.replace(/_/g, ' ')}
 

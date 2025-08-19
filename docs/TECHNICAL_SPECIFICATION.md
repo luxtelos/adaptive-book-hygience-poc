@@ -369,7 +369,7 @@ QuickBooks provides OAuth Discovery documents for automatic endpoint configurati
 | **Sandbox** | `https://developer.api.intuit.com/.well-known/openid_sandbox_configuration` | Sandbox OAuth endpoints |
 
 **Key Endpoints from Discovery:**
-- Authorization: `https://appcenter.intuit.com/connect/oauth2/authorize`
+- Authorization: `https://appcenter.intuit.com/connect/oauth2` (DO NOT add /authorize - causes issues with commercial accounts)
 - Token: `https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer` (Production)
 - Token: `https://sandbox-quickbooks.api.intuit.com/oauth2/v1/tokens/bearer` (Sandbox)
 - Revoke: `https://developer.api.intuit.com/v2/oauth2/tokens/revoke`

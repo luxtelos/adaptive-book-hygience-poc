@@ -148,7 +148,7 @@ export class LLMInputFormatter {
     
     output.push('---');
     output.push('');
-    output.push('*This data is being sent to the AI for hygiene assessment analysis*');
+    output.push('*This data is being sent to the AI for accounting quality assessment analysis*');
     
     return output.join('\n');
   }
