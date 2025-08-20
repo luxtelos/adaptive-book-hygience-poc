@@ -163,15 +163,15 @@ export class QBOTokenService {
         return null;
       }
 
-      // Handle RPC response format
-      if (!data || !data.success) {
+      // Handle RPC response format consistently
+      if (!data || !data.success || !data.data) {
         logger.debug('No active QBO tokens found for user');
         return null;
       }
 
-      // Extract token from RPC response
-      // data.data can be an array (all tokens) or single object (specific token)
-      const tokenData = Array.isArray(data.data) ? data.data[0] : data.data;
+      // Normalize data.data to always handle as array, then extract first token
+      const tokenArray = Array.isArray(data.data) ? data.data : [data.data];
+      const tokenData = tokenArray[0];
       
       if (!tokenData) {
         logger.debug('No active QBO tokens found for user');
@@ -194,6 +194,12 @@ export class QBOTokenService {
     try {
       logger.debug('Updating QBO tokens for user', { clerkUserId });
 
+      // Validate required access_token
+      if (!tokens.access_token) {
+        logger.error('Missing access_token in tokens for update');
+        return false;
+      }
+
       // Get realm_id from existing tokens if not provided
       let realmId = tokens.realm_id;
       if (!realmId) {
@@ -208,7 +214,7 @@ export class QBOTokenService {
       const { data, error } = await supabase.rpc('update_qbo_token', {
         p_user_id: clerkUserId,
         p_realm_id: realmId,
-        p_access_token: tokens.access_token!,
+        p_access_token: tokens.access_token,
         p_refresh_token: tokens.refresh_token || null,
         p_expires_in: tokens.expires_in || null
       });
