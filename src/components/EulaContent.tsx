@@ -5,14 +5,17 @@ interface EulaContentProps {
   className?: string;
 }
 
+// Define the last updated date as a constant
+const EULA_LAST_UPDATED = "August 19, 2025";
+
 const EulaContent: React.FC<EulaContentProps> = ({ 
   headingLevel = 'h3', 
   className = "space-y-6 text-gray-700" 
 }) => {
   const HeadingComponent = headingLevel;
   const headingClasses = headingLevel === 'h2' 
-    ? "text-xl font-semibold text-gray-900 mb-3"
-    : "text-xl font-semibold text-gray-900 mb-3";
+    ? "text-2xl font-bold text-gray-900 mb-3"
+    : "text-xl font-semibold text-gray-900 mb-2";
 
   return (
     <div className={className}>
@@ -198,7 +201,7 @@ const EulaContent: React.FC<EulaContentProps> = ({
           10. Compliance and Export Controls
         </HeadingComponent>
         <p>
-          You agree to comply with all applicable laws, including export control laws and regulations. You represent that you are not located in, or a national of, any country subject to U.S. government embargo or designated as a "terrorist supporting" country, and that you are not on any U.S. government list of prohibited or restricted parties.
+          You agree to comply—with all applicable laws, including export control laws and regulations. You represent that you are not located in, or a national of, any country subject to U.S. government embargo or designated as a "terrorist supporting" country, and that you are not on any U.S. government list of prohibited or restricted parties.
         </p>
       </section>
 
@@ -261,7 +264,7 @@ const EulaContent: React.FC<EulaContentProps> = ({
 
       <div className="mt-8 pt-6 border-t border-gray-200">
         <p className="text-sm text-gray-500">
-            Last updated: {new Date().toLocaleDateString()}
+          Last updated: {EULA_LAST_UPDATED}
         </p>
       </div>
     </div>

@@ -60,13 +60,8 @@ export class EulaStorage {
    * Force clear EULA for testing (adds to window for debugging)
    */
   static forceResetForTesting(): void {
-    try {
-      localStorage.removeItem(EULA_ACCEPTANCE_KEY);
-      localStorage.removeItem(EULA_VERSION_KEY);
-      console.log('EULA acceptance cleared for testing');
-    } catch (error) {
-      console.error('Error clearing EULA for testing:', error);
-    }
+    EulaStorage.clearEulaAcceptance();
+    console.log('EULA acceptance cleared for testing');
   }
 }
 
