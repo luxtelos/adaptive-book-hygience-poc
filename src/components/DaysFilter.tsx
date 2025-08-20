@@ -53,12 +53,29 @@ const DaysFilter: React.FC<DaysFilterProps> = ({
     }
   };
 
-  const getRecommendedRanges = () => [
-    { label: '90 days (3 months)', value: 90, description: 'Standard quarterly view' },
-    { label: '120 days (4 months)', value: 120, description: 'Extended quarterly view' },
-    { label: '180 days (6 months)', value: 180, description: 'Semi-annual view' },
-    { label: '365 days (1 year)', value: 365, description: 'Full annual view' },
-  ];
+  const getRecommendedRanges = () => {
+    const today = new Date();
+    const currentYear = today.getFullYear();
+    const currentMonth = today.getMonth();
+    
+    // Calculate Year to Date (days from Jan 1 to today)
+    const yearStart = new Date(currentYear, 0, 1);
+    const yearToDateDays = Math.floor((today.getTime() - yearStart.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+    
+    // Calculate Quarter to Date (days from quarter start to today)
+    const currentQuarter = Math.floor(currentMonth / 3);
+    const quarterStart = new Date(currentYear, currentQuarter * 3, 1);
+    const quarterToDateDays = Math.floor((today.getTime() - quarterStart.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+    
+    return [
+      { label: 'Quarter to Date', value: quarterToDateDays, description: `Current quarter (${quarterToDateDays} days)` },
+      { label: 'Year to Date', value: yearToDateDays, description: `Since Jan 1 (${yearToDateDays} days)` },
+      { label: '90 days (3 months)', value: 90, description: 'Standard quarterly view' },
+      { label: '120 days (4 months)', value: 120, description: 'Extended quarterly view' },
+      { label: '180 days (6 months)', value: 180, description: 'Semi-annual view' },
+      { label: '365 days (1 year)', value: 365, description: 'Full annual view' },
+    ];
+  };
 
   const getDateRange = (days: number) => {
     const endDate = new Date();

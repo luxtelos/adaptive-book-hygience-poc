@@ -28,7 +28,7 @@ export interface StoredAssessmentData {
 // =================================================================================
 
 export class AssessmentStorageService {
-  private static readonly STORAGE_KEY = "hygiene_assessment_data";
+  private static readonly STORAGE_KEY = "accounting_quality_assessment_data";
 
   /**
    * Stores assessment results ephemerally in sessionStorage.
@@ -99,7 +99,7 @@ export class AssessmentStorageService {
     const { assessmentResults, companyName, generatedAt } = storedData;
     
     // Create a comprehensive markdown report
-    const markdown = `# Financial Books Hygiene Assessment Report
+    const markdown = `# Accounting Quality Assessment Report
 
 **Company:** ${companyName}  
 **Assessment Date:** ${new Date(generatedAt).toLocaleDateString()}  
@@ -201,7 +201,7 @@ ${assessmentResults.assessmentMetadata.limitations.map(limitation => `• ${limi
       // Prepare the PDF generation request
       const pdfRequest = {
         markdown,
-        filename: `${storedData.companyName.replace(/[^a-zA-Z0-9]/g, '_')}_hygiene_assessment.pdf`,
+        filename: `${storedData.companyName.replace(/[^a-zA-Z0-9]/g, '_')}_accounting_quality_assessment.pdf`,
         companyName: storedData.companyName,
         assessmentDate: storedData.generatedAt
       };
@@ -238,7 +238,7 @@ ${assessmentResults.assessmentMetadata.limitations.map(limitation => `• ${limi
       const url = URL.createObjectURL(pdfBlob);
       const link = document.createElement('a');
       link.href = url;
-      link.download = `${storedData.companyName.replace(/[^a-zA-Z0-9]/g, '_')}_hygiene_assessment.pdf`;
+      link.download = `${storedData.companyName.replace(/[^a-zA-Z0-9]/g, '_')}_accounting_quality_assessment.pdf`;
       
       // Trigger download
       document.body.appendChild(link);

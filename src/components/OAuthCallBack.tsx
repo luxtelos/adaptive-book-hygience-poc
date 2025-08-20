@@ -78,7 +78,7 @@ const OAuthCallback: React.FC<OAuthCallbackProps> = ({
             navigate("/assessment");
             return;
           } else {
-            throw new Error("Failed to store tokens in database");
+            throw new Error("Failed to store tokens in database - this may be due to a duplicate active token conflict. Please try disconnecting and reconnecting your QuickBooks account.");
           }
         } catch (err) {
           logger.error("Failed to process tokens from N8N:", err);

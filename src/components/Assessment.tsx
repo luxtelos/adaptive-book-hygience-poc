@@ -473,11 +473,26 @@ const Assessment = ({
       );
     } catch (error) {
       logger.error("Error fetching financial data via webhook:", error);
-      setDataFetchError(
-        error instanceof Error
-          ? error.message
-          : "Failed to fetch financial data from webhook",
-      );
+      const errorMessage = error instanceof Error ? error.message : "Failed to fetch financial data from webhook";
+      setDataFetchError(errorMessage);
+
+      // Check if this is an authentication error that requires re-auth
+      if (errorMessage.toLowerCase().includes('expired') || 
+          errorMessage.toLowerCase().includes('authentication') || 
+          errorMessage.toLowerCase().includes('reconnect')) {
+        logger.info("Authentication error detected, tokens already cleared by service");
+        
+        // Tokens are already cleared by the service, just redirect
+        // Redirect to QBO auth after a short delay to show the error
+        setTimeout(() => {
+          navigate('/qbo-auth', { 
+            state: { 
+              formData, 
+              error: errorMessage 
+            } 
+          });
+        }, 2000);
+      }
 
       // Mark all pillars as error
       setPillarImportStatus((prevStatus) => {
@@ -560,16 +575,16 @@ const Assessment = ({
     };
   };
 
-  // Handle AI-powered hygiene analysis with enhanced data structure
+  // Handle AI-powered accounting quality analysis with enhanced data structure
   const handleAIAnalysis = async () => {
     if (!webhookData) {
       logger.error("No webhook assessment data available for analysis");
       return;
     }
 
-    logger.group("AI Hygiene Analysis");
+    logger.group("AI Accounting Quality Analysis");
     logger.info(
-      "Starting AI-powered financial hygiene assessment with 5-pillar methodology using webhook data",
+      "Starting AI-powered accounting quality assessment with 5-pillar methodology using webhook data",
     );
 
     setIsAnalyzing(true);
@@ -651,13 +666,13 @@ const Assessment = ({
       setAiAnalysisProgress({
         phase: "analyzing",
         message:
-          "Analyzing financial hygiene with AI (this may take 30-60 seconds)...",
+          "Analyzing accounting quality with AI (this may take 30-60 seconds)...",
         percentage: 50,
       });
 
       // Perform AI analysis with assessment data (including current scores and raw pillar data)
       const completeResponse: CompleteAssessmentResponse =
-        await perplexityService.analyzeFinancialHygiene(
+        await perplexityService.analyzeAccountingQuality(
           assessmentDataForAI as any,
         );
 
@@ -718,7 +733,7 @@ const Assessment = ({
         setAiAnalysisProgress(null);
       }, 1000);
 
-      logger.info("AI hygiene assessment completed successfully", {
+      logger.info("AI accounting quality assessment completed successfully", {
         overallScore: completeResponse.assessmentResult.overallScore,
         readinessStatus: completeResponse.assessmentResult.readinessStatus,
         pillarScores: completeResponse.assessmentResult.pillarScores,
@@ -726,7 +741,7 @@ const Assessment = ({
         assessmentId,
       });
     } catch (error) {
-      logger.error("AI hygiene analysis failed", error);
+      logger.error("AI accounting quality analysis failed", error);
 
       // Provide user-friendly error handling
       setAiAnalysisProgress({
@@ -778,7 +793,7 @@ const Assessment = ({
         formData.company || "Company",
         {
           action,
-          fileName: `${formData.company?.replace(/[^a-zA-Z0-9]/g, '_') || 'company'}_hygiene_assessment_${new Date().toISOString().split('T')[0]}.pdf`
+          fileName: `${formData.company?.replace(/[^a-zA-Z0-9]/g, '_') || 'company'}_accounting_quality_assessment_${new Date().toISOString().split('T')[0]}.pdf`
         }
       );
 
@@ -810,7 +825,7 @@ const Assessment = ({
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center py-4">
             <h1 className="text-2xl font-bold text-gray-900">
-              Financial Books Hygiene Assessment
+              Accounting Quality Assessment
             </h1>
             <div className="flex items-center space-x-4">
               {isLoaded && isSignedIn && user ? (
@@ -1120,7 +1135,7 @@ const Assessment = ({
                         Importing Financial Data
                       </h3>
                       <p className="text-gray-600">
-                        Analyzing your QuickBooks data across 5 critical hygiene pillars
+                        Analyzing your QuickBooks data across 5 critical quality pillars
                       </p>
                     </>
                   ) : importCompleted ? (
@@ -1855,7 +1870,7 @@ const Assessment = ({
                         All 5 Pillars Successfully Imported
                       </p>
                       <p className="text-green-700 text-sm mt-2">
-                        Your financial data is ready for comprehensive AI-powered hygiene assessment
+                        Your financial data is ready for comprehensive AI-powered quality assessment
                       </p>
                     </div>
                   </div>
@@ -2478,7 +2493,7 @@ const Assessment = ({
                     className="bg-blue-600 text-white px-8 py-3 rounded-lg hover:bg-blue-700 transition-colors flex items-center mx-auto"
                   >
                     <PlayIcon className="w-5 h-5 mr-2" />
-                    Run AI Hygiene Assessment
+                    Run AI Quality Assessment
                   </button>
                 </div>
               ) : (
@@ -2990,7 +3005,7 @@ const Assessment = ({
               {/* Modal content */}
               <div className="inline-block w-full max-w-6xl px-4 pt-5 pb-4 overflow-hidden text-left align-bottom transition-all transform bg-white rounded-lg shadow-xl sm:my-8 sm:align-middle sm:p-6">
                 <div className="flex justify-between items-center mb-4">
-                  <h2 className="text-2xl font-bold">Financial Hygiene Pillar Data</h2>
+                  <h2 className="text-2xl font-bold">Accounting Quality Pillar Data</h2>
                   <button
                     onClick={() => setShowPillarViewer(false)}
                     className="text-gray-400 hover:text-gray-600 transition-colors"

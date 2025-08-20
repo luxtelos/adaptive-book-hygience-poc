@@ -3,7 +3,7 @@
  * @description Service for fetching all 5 pillars data via consolidated webhook
  * 
  * This service replaces multiple QBO API calls with a single webhook endpoint
- * that returns all required financial data for hygiene assessment.
+ * that returns all required financial data for accounting quality assessment.
  */
 
 import { QBOTokenService } from './qboTokenService';
@@ -179,8 +179,9 @@ export async function fetchAllPillarsData(
     const isValid = await QBOTokenService.validateAndRefreshIfNeeded(clerkUserId);
     
     if (!isValid) {
-      logger.error('Token validation failed - tokens may be revoked or refresh failed');
-      throw new Error('QuickBooks authentication failed. Please reconnect to QuickBooks.');
+      logger.error('Token validation failed - tokens have been cleared for re-authentication');
+      // Tokens have been cleared, user needs to re-authenticate
+      throw new Error('Your QuickBooks session has expired. Please reconnect to QuickBooks.');
     }
 
     // Get QBO tokens (may have been refreshed)

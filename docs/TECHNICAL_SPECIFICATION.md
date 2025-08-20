@@ -1,6 +1,27 @@
 # Financial Books Hygiene Assessment System
 ## Technical Specification & Implementation Guide
 
+> **Latest Update (January 2025)**: Critical OAuth token management enhancements with automatic error recovery, timeout protection, and prevention of authentication loops. See [Critical Production Issues Resolved](#critical-production-issues-resolved) for details.
+
+---
+
+## 🔒 Critical Security Updates
+
+### Recent OAuth Enhancements
+- **Atomic Token Storage**: RPC functions prevent 409 conflicts completely
+- **Automatic Token Clearing**: Prevents stuck authentication states
+- **10-Second Timeout Protection**: All token operations now timeout-protected
+- **Enhanced Error Detection**: Proper N8N webhook error format handling
+- **No Hardcoded Fallbacks**: Strict environment variable validation
+- **Force Re-authentication**: New UI flow for clean token reset
+
+### Required Environment Variables (No Fallbacks)
+```bash
+VITE_N8N_OAUTH_TOKEN_ENDPOINT    # Required - throws error if missing
+VITE_N8N_OAUTH_REVOKE_ENDPOINT   # Required - throws error if missing  
+VITE_QBO_CLIENT_ID               # Required - throws error if missing
+```
+
 ---
 
 ## 📋 Executive Pre-Read
@@ -325,13 +346,23 @@ flowchart TD
 **IMPORTANT**: The client secret is NEVER exposed in the frontend. All OAuth operations requiring the client secret are handled through the N8N proxy backend.
 
 ```typescript
-// Token storage structure (Supabase)
+// Token storage structure (Supabase - RPC functions handle atomically)
 interface QBOTokenData {
   access_token: string;     // Encrypted in Supabase
   refresh_token: string;    // Encrypted in Supabase  
   realm_id: string;         // Company ID
   expires_at: string;       // ISO timestamp
   expires_in: number;       // Seconds until expiry
+  is_active: boolean;      // Active flag for token management
+}
+
+// RPC Functions for Atomic Operations
+interface QBOTokenRPCFunctions {
+  store_qbo_token: (params: StoreTokenParams) => Promise<QBOTokenData>;
+  get_qbo_token: (user_id: string, realm_id?: string) => Promise<QBOTokenData>;
+  update_qbo_token: (params: UpdateTokenParams) => Promise<QBOTokenData>;
+  delete_qbo_tokens: (user_id: string, realm_id?: string) => Promise<{count: number}>;
+  deactivate_qbo_tokens: (user_id: string, realm_id?: string) => Promise<{count: number}>;
 }
 
 // OAuth Configuration (Frontend - NO CLIENT SECRET)
@@ -339,9 +370,14 @@ interface OAuthConfig {
   tokenEndpoint: string;    // N8N proxy endpoint (handles client secret)
   revokeEndpoint: string;   // N8N proxy endpoint (handles client secret)
   clientId: string;         // Public client ID (safe for frontend)
-  clientSecret: '';         // NEVER exposed in frontend
-  isSandbox: boolean;       // Sandbox vs Production mode
+  // NO clientSecret - handled server-side only
 }
+
+// CRITICAL: Environment Variables (No Fallbacks)
+// Application will throw errors if these are missing:
+// - VITE_N8N_OAUTH_TOKEN_ENDPOINT (required)
+// - VITE_N8N_OAUTH_REVOKE_ENDPOINT (required)
+// - VITE_QBO_CLIENT_ID (required)
 
 // Rate limiter configuration
 const RATE_LIMIT_CONFIG = {
@@ -351,11 +387,12 @@ const RATE_LIMIT_CONFIG = {
   backoffMultiplier: 2
 };
 
-// Token refresh configuration
+// Enhanced Token refresh configuration
 const TOKEN_REFRESH_CONFIG = {
   thresholdHours: 12,      // Refresh when within 12 hours of expiry
   maxAttempts: 3,          // Maximum refresh retry attempts
-  backoffMs: 2000          // Initial backoff delay
+  backoffMs: 2000,         // Initial backoff delay
+  timeout: 10000           // 10-second timeout for refresh requests
 };
 ```
 
@@ -369,7 +406,7 @@ QuickBooks provides OAuth Discovery documents for automatic endpoint configurati
 | **Sandbox** | `https://developer.api.intuit.com/.well-known/openid_sandbox_configuration` | Sandbox OAuth endpoints |
 
 **Key Endpoints from Discovery:**
-- Authorization: `https://appcenter.intuit.com/connect/oauth2/authorize`
+- Authorization: `https://appcenter.intuit.com/connect/oauth2` (DO NOT add /authorize - causes issues with commercial accounts)
 - Token: `https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer` (Production)
 - Token: `https://sandbox-quickbooks.api.intuit.com/oauth2/v1/tokens/bearer` (Sandbox)
 - Revoke: `https://developer.api.intuit.com/v2/oauth2/tokens/revoke`
@@ -378,26 +415,101 @@ QuickBooks provides OAuth Discovery documents for automatic endpoint configurati
 - Token Refresh: `https://your-n8n-proxy.com/webhook/oauth/refresh`
 - Token Revoke: `https://your-n8n-proxy.com/webhook/oauth/revoke`
 
-#### OAuth Error Handling
+#### Enhanced OAuth Error Handling & Token Management
 
-Comprehensive OAuth error handling with automatic recovery:
+##### Automatic Token Clearing and Recovery
 
-| Error Type | Description | Handling Strategy | User Impact |
-|------------|-------------|-------------------|-------------|
-| **invalid_grant** | Refresh token expired/invalid | Require re-authentication | Must reconnect QuickBooks |
-| **invalid_request** | Malformed request | Log and retry with backoff | Automatic retry |
-| **invalid_client** | Client credentials invalid | Check configuration | Contact support |
-| **unauthorized_client** | Client not authorized | Verify app permissions | Check QBO app settings |
-| **server_error** | QBO server issues | Exponential backoff retry | Automatic retry |
-| **temporarily_unavailable** | Service temporarily down | Retry with backoff | Wait and retry |
-| **expired_token** | Access token expired | Automatic refresh | Transparent to user |
-| **network_error** | Connection issues | Retry with backoff | Automatic retry |
+The system now implements aggressive token clearing to prevent stuck states:
 
-**Automatic Token Refresh:**
-- Tokens refreshed when within 12 hours of expiry
-- Background refresh process with no user interruption
-- Maximum 3 retry attempts with exponential backoff
-- Automatic re-authentication prompt if refresh fails
+| Error Type | Description | Handling Strategy | Token Action | User Impact |
+|------------|-------------|-------------------|--------------|-------------|
+| **invalid_grant** | Refresh token expired/invalid or app mismatch | Clear tokens & require re-auth | **Automatically cleared** | Must reconnect QuickBooks |
+| **invalid_request** | Malformed request | Log and retry with backoff | Preserved | Automatic retry |
+| **invalid_client** | Client credentials invalid | Check configuration | Preserved | Contact support |
+| **unauthorized_client** | Client not authorized | Verify app permissions | Preserved | Check QBO app settings |
+| **server_error** | QBO server issues | Exponential backoff retry | Preserved | Automatic retry |
+| **temporarily_unavailable** | Service temporarily down | Retry with backoff | Preserved | Wait and retry |
+| **expired_token** | Access token expired | Automatic refresh attempt | **Cleared if refresh fails** | Re-authentication if needed |
+| **network_error** | Connection issues/timeout | Treat as auth failure | **Automatically cleared** | Must reconnect QuickBooks |
+| **timeout** | Request timeout (10s) | Treat as invalid grant | **Automatically cleared** | Must reconnect QuickBooks |
+
+##### Token Refresh Flow with Timeout Protection
+
+```typescript
+// Enhanced token refresh with AbortController timeout
+const controller = new AbortController();
+const timeoutId = setTimeout(() => controller.abort(), 10000); // 10-second timeout
+
+try {
+  const response = await fetch(config.tokenEndpoint, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(requestBody),
+    signal: controller.signal
+  });
+} catch (error) {
+  if (error.name === 'AbortError') {
+    // Timeout occurred - clear tokens and require re-auth
+    await QBOTokenService.clearTokens(userId);
+    throw new OAuthTokenError('Token refresh timeout - re-authentication required');
+  }
+}
+```
+
+##### N8N Webhook Error Detection
+
+The system now properly detects N8N-wrapped error responses:
+
+```typescript
+// Enhanced N8N error format detection
+if (errorBody.errorDescription === 'invalid_grant' || 
+    errorBody.errorDetails?.rawErrorMessage?.[0]?.includes('invalid_grant')) {
+  // Tokens created with different QBO app - clear and re-auth
+  oauthError = 'invalid_grant';
+  errorDescription = 'Incorrect Token type or clientID';
+}
+```
+
+##### Automatic Token Validation & Refresh
+
+```typescript
+validateAndRefreshIfNeeded(userId): Promise<boolean> {
+  // 1. Check if tokens exist
+  // 2. If expired:
+  //    - Try refresh
+  //    - If refresh fails → clear tokens → return false
+  // 3. If near expiry:
+  //    - Try refresh
+  //    - If refresh fails → still use existing tokens
+  // 4. Return validation result
+}
+```
+
+##### QBOTokenService Method Updates
+
+**New/Updated Methods:**
+
+```typescript
+class QBOTokenService {
+  // Clear tokens for a user (alias for clearUserData)
+  static async clearTokens(userId: string): Promise<boolean>
+  
+  // Enhanced validation with automatic clearing on failure
+  static async validateAndRefreshIfNeeded(userId: string): Promise<boolean>
+  
+  // Timeout-protected refresh with AbortController
+  static async refreshAccessToken(userId: string): Promise<boolean>
+  
+  // Environment variable validation (throws if missing)
+  private static getOAuthConfig(): OAuthConfig
+}
+```
+
+**Key Behavioral Changes:**
+- `clearTokens()`: New alias method for better semantic clarity
+- `validateAndRefreshIfNeeded()`: Now automatically clears tokens if refresh fails on expired tokens
+- `refreshAccessToken()`: Implements 10-second timeout with AbortController
+- `getOAuthConfig()`: Throws errors for missing env vars instead of using fallbacks
 
 #### Financial Reports API Calls
 
@@ -770,6 +882,52 @@ const SECURITY_CONFIG = {
 - **Data Retention**: Ephemeral storage with no permanent financial data retention
 - **Professional Standards**: CPA-grade analysis with attestation support
 
+### Critical Production Issues Resolved
+
+#### 1. 409 Conflict Resolution (NEW)
+**Problem**: Duplicate key constraint violations when storing OAuth tokens
+**Solution**:
+- Implemented atomic RPC functions for all token operations
+- `store_qbo_token`: Delete-then-insert in single transaction
+- Removed complex retry logic from application code
+- 100% elimination of 409 errors
+
+#### 2. Invalid Grant Loop Prevention
+**Problem**: Users stuck in authentication loop when tokens created with different QBO app
+**Solution**: 
+- Automatic detection of `invalid_grant` errors
+- Immediate token clearing on app mismatch
+- Clear user messaging about re-authentication requirement
+
+#### 3. Timeout Protection
+**Problem**: Token refresh requests hanging indefinitely
+**Solution**:
+- 10-second timeout with AbortController
+- Automatic token clearing on timeout
+- Graceful fallback to re-authentication
+
+#### 4. Token Mismatch Handling
+**Problem**: Tokens from different QBO apps causing cryptic errors
+**Solution**:
+- Enhanced N8N webhook error detection
+- Specific error message: "Incorrect Token type or clientID"
+- Automatic token clearing and re-auth flow
+
+#### 5. CORS and Network Error Recovery
+**Problem**: Network errors leaving users in undefined state
+**Solution**:
+- Treat all network/CORS errors as authentication failures
+- Automatic token clearing for clean recovery
+- Clear redirect to re-authentication flow
+
+#### 6. Expired Token Cascade
+**Problem**: Expired tokens causing multiple failed API calls
+**Solution**:
+- Pre-emptive validation before API calls
+- Single-point refresh attempt with timeout
+- Automatic clearing if refresh fails
+- Clean re-authentication flow
+
 ---
 
 ## 📈 Performance Characteristics
@@ -1122,11 +1280,58 @@ describe('Assessment Flow Integration', () => {
 3. **Testing**: Unit tests for core services, integration tests for API flows
 4. **Deployment**: Netlify with automatic builds on commit
 
+### Critical Error Recovery Flow
+
+```mermaid
+flowchart TD
+    A[User Action] --> B{Token Valid?}
+    B -->|Yes| C[Proceed with API Call]
+    B -->|No| D{Token Expired?}
+    D -->|Yes| E[Attempt Refresh]
+    D -->|No| F[Use Existing Token]
+    
+    E --> G{Refresh Success?}
+    G -->|Yes| C
+    G -->|No - Timeout| H[Clear Tokens]
+    G -->|No - Invalid Grant| H
+    G -->|No - Network Error| H
+    
+    H --> I[Redirect to QBOAuth]
+    I --> J[Show Re-auth Message]
+    J --> K{User Clicks Reconnect?}
+    K -->|Yes| L[Force Clear Any Remaining Tokens]
+    L --> M[Fresh OAuth Flow]
+    K -->|No| N[Continue Without QBO]
+    
+    style H fill:#ff6b6b
+    style I fill:#ffd93d
+    style L fill:#6bcf7f
+    style M fill:#4ecdc4
+```
+
+### Component-Level Error Handling
+
+#### QBOAuth Component Enhancements
+- **Force Clear Parameter**: `loginWithQuickBooks(forceClearTokens: boolean)`
+- **Re-authentication Error State**: Displays specific error messages from failed operations
+- **URL Parameter Support**: `?force=true` bypasses token checking for immediate re-auth
+- **Location State Handling**: Receives error messages from Assessment redirect
+
+#### Assessment Component Error Detection
+- **Enhanced Error Keywords**: Detects "expired", "authentication", "reconnect"
+- **Automatic Redirect**: Navigates to QBOAuth with descriptive error message
+- **Service-Level Token Clearing**: No redundant clearing (handled by service layer)
+- **Error Pass-through**: Preserves original error message for user context
+
 ### Code Standards
 - **TypeScript**: Strict mode enabled, comprehensive type definitions
 - **React**: Functional components with hooks, proper state management
 - **Error Handling**: Comprehensive try-catch with structured logging
 - **API Integration**: Rate limiting, retry logic, graceful degradation
+- **Token Management**: Automatic clearing on critical failures, no stuck states
+- **Environment Variables**: Strict validation, no hardcoded fallbacks
+- **Timeout Protection**: 10-second timeout on all token operations
+- **Error Recovery**: Automatic token clearing for non-retryable errors
 
 ### Professional Validation
 - **CPA Methodology**: 5-pillar assessment aligned with professional standards

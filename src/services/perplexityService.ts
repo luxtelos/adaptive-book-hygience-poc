@@ -4,7 +4,7 @@ import { LLMInputFormatter } from "./llmInputFormatter";
 
 /**
  * @file perplexityService.ts
- * @description Service for integrating with Perplexity AI API to perform financial hygiene assessments.
+ * @description Service for integrating with Perplexity AI API to perform accounting quality assessments.
  *
  * This service handles communication with the Perplexity LLM API, formatting financial data
  * for analysis, and parsing the structured assessment results according to the Day-30
@@ -951,13 +951,13 @@ export class PerplexityService {
   }
 
   /**
-   * Performs a complete financial hygiene assessment using the Perplexity API.
+   * Performs a complete accounting quality assessment using the Perplexity API.
    * Now supports webhook assessment data format
    */
-  public async analyzeFinancialHygiene(
+  public async analyzeAccountingQuality(
     rawData: FivePillarRawData | QBODataPackage | any,
   ): Promise<CompleteAssessmentResponse> {
-    logger.info("Starting financial hygiene assessment with Perplexity AI");
+    logger.info("Starting accounting quality assessment with Perplexity AI");
 
     try {
       // Load the assessment prompt
