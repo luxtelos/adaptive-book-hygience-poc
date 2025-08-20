@@ -215,7 +215,6 @@ export class QBOTokenService {
         p_user_id: clerkUserId,
         p_realm_id: realmId,
         p_access_token: tokens.access_token,
-        p_refresh_token: tokens.refresh_token || null,
         p_refresh_token: tokens.refresh_token === undefined ? null : tokens.refresh_token,
         p_expires_in: tokens.expires_in === undefined ? null : tokens.expires_in
       });
