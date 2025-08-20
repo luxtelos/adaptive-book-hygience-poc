@@ -71,6 +71,9 @@ export class EulaStorage {
 }
 
 // Add to window for debugging purposes
-if (typeof window !== 'undefined') {
+if (
+  typeof window !== 'undefined' &&
+  process.env.NODE_ENV === 'development'
+) {
   (window as any).clearEULA = EulaStorage.forceResetForTesting;
 }
