@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { useUser } from "@clerk/clerk-react";
 import {
   Link2Icon,
@@ -61,9 +61,11 @@ const QBOAuth: React.FC<QBOAuthProps> = ({
   authError,
 }) => {
   const navigate = useNavigate();
+  const location = useLocation();
   const { user, isLoaded } = useUser();
   const [isCheckingTokens, setIsCheckingTokens] = useState(true);
   const [storedTokens, setStoredTokens] = useState<StoredQBOTokens | null>(null);
+  const [reauthError, setReauthError] = useState<string | null>(null);
 
   console.log("🟢 QBOAuth component is rendering!");
   console.log("QBOAuth props:", {
@@ -74,10 +76,39 @@ const QBOAuth: React.FC<QBOAuthProps> = ({
     authError,
   });
 
+  // Check for re-auth error from navigation state
+  useEffect(() => {
+    if (location.state?.error) {
+      setReauthError(location.state.error);
+      // Clear the error from location state
+      navigate(location.pathname, { replace: true, state: { formData: location.state?.formData } });
+    }
+  }, [location.state, navigate, location.pathname]);
+
   // Check for existing stored tokens on component mount
   useEffect(() => {
     const checkExistingTokens = async () => {
       if (!isLoaded || !user) {
+        return;
+      }
+
+      // Skip token check if we have a re-auth error (user was redirected here to re-authenticate)
+      // or if there's any auth error
+      if (reauthError || authError) {
+        logger.info("Skipping token check due to authentication error");
+        setIsCheckingTokens(false);
+        return;
+      }
+
+      // Also skip if URL has a force parameter (for manual reconnection)
+      const urlParams = new URLSearchParams(window.location.search);
+      if (urlParams.get('force') === 'true') {
+        logger.info("Skipping token check due to force parameter");
+        setIsCheckingTokens(false);
+        // Clear tokens for fresh start
+        if (user?.id) {
+          await QBOTokenService.clearTokens(user.id);
+        }
         return;
       }
 
@@ -125,9 +156,22 @@ const QBOAuth: React.FC<QBOAuthProps> = ({
     }
   }, [accessToken, navigate]);
 
-  const loginWithQuickBooks = () => {
-    console.log("🔴 loginWithQuickBooks CALLED!");
+  const loginWithQuickBooks = async (forceClearTokens = false) => {
+    console.log("🔴 loginWithQuickBooks CALLED!", { forceClearTokens });
     console.trace("Stack trace for loginWithQuickBooks call");
+    
+    // If forceClearTokens is true, clear any existing tokens first
+    if (forceClearTokens && user?.id) {
+      console.log("Force clearing existing QBO tokens before re-authentication");
+      try {
+        await QBOTokenService.clearTokens(user.id);
+        logger.info("Cleared existing QBO tokens for fresh authentication");
+      } catch (error) {
+        logger.error("Error clearing tokens before re-auth:", error);
+        // Continue with OAuth flow even if clearing fails
+      }
+    }
+    
     console.log("Environment variables at redirect time:");
     console.log("CLIENT_ID:", CLIENT_ID);
     console.log("REDIRECT_URI:", REDIRECT_URI);
@@ -226,7 +270,7 @@ const QBOAuth: React.FC<QBOAuthProps> = ({
                   financial assessment.
                 </p>
                 <button
-                  onClick={loginWithQuickBooks}
+                  onClick={() => loginWithQuickBooks()}
                   className="bg-green-600 text-white px-8 py-3 rounded-lg hover:bg-green-700 transition-colors flex items-center mx-auto text-lg font-semibold"
                 >
                   <Link2Icon className="w-5 h-5 mr-2" />
@@ -296,25 +340,25 @@ const QBOAuth: React.FC<QBOAuthProps> = ({
             )}
 
             {/* Error State */}
-            {authError && (
+            {(authError || reauthError) && (
               <div className="bg-red-50 border border-red-200 rounded-lg p-6 text-center">
                 <ExclamationTriangleIcon className="w-12 h-12 text-red-600 mx-auto mb-4" />
                 <h3 className="text-xl font-semibold text-gray-900 mb-2">
-                  Connection Failed
+                  {reauthError ? 'Re-authentication Required' : 'Connection Failed'}
                 </h3>
                 <p className="text-gray-600 mb-4">
-                  We encountered an issue connecting to your QuickBooks account:
+                  {reauthError ? 'Your QuickBooks session needs to be renewed:' : 'We encountered an issue connecting to your QuickBooks account:'}
                 </p>
                 <div className="bg-white rounded-lg p-4 mb-6">
-                  <p className="text-red-700 font-medium">{authError}</p>
+                  <p className="text-red-700 font-medium">{reauthError || authError}</p>
                 </div>
                 <div className="space-y-3">
                   <button
-                    onClick={loginWithQuickBooks}
+                    onClick={() => loginWithQuickBooks(true)} // Force clear tokens and reconnect
                     className="bg-green-600 text-white px-6 py-2 rounded-lg hover:bg-green-700 transition-colors mr-3"
                   >
                     <ReloadIcon className="w-4 h-4 mr-2 inline" />
-                    Try Again
+                    Reconnect to QuickBooks
                   </button>
                   <button
                     onClick={() => navigate("/assessment")}

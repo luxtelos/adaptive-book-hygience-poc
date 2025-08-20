@@ -94,53 +94,52 @@ export class QBOTokenService {
    * SECURITY: Client secret is NOT included here - handled by N8N proxy backend
    */
   private static getOAuthConfig(): OAuthConfig {
+    const tokenEndpoint = import.meta.env.VITE_N8N_OAUTH_TOKEN_ENDPOINT;
+    const revokeEndpoint = import.meta.env.VITE_N8N_OAUTH_REVOKE_ENDPOINT;
+    const clientId = import.meta.env.VITE_QBO_CLIENT_ID;
+
+    if (!tokenEndpoint) {
+      throw new Error('VITE_N8N_OAUTH_TOKEN_ENDPOINT environment variable is required');
+    }
+    if (!revokeEndpoint) {
+      throw new Error('VITE_N8N_OAUTH_REVOKE_ENDPOINT environment variable is required');
+    }
+    if (!clientId) {
+      throw new Error('VITE_QBO_CLIENT_ID environment variable is required');
+    }
+
     return {
-      // Use N8N proxy endpoints that handle client secret server-side
-      tokenEndpoint: import.meta.env.VITE_N8N_OAUTH_TOKEN_ENDPOINT || 
-        'https://n8n-1-102-1-c1zi.onrender.com/webhook/oauth/refresh',
-      revokeEndpoint: import.meta.env.VITE_N8N_OAUTH_REVOKE_ENDPOINT || 
-        'https://n8n-1-102-1-c1zi.onrender.com/webhook/oauth/revoke',
-      clientId: import.meta.env.VITE_QBO_CLIENT_ID || ''
+      tokenEndpoint,
+      revokeEndpoint,
+      clientId
     };
   }
   
   /**
-   * Store QBO tokens for a user (encrypted in database)
+   * Store QBO tokens for a user using atomic RPC function
+   * Handles delete-then-insert in a single transaction to prevent conflicts
    */
   static async storeTokens(clerkUserId: string, tokens: QBOTokens): Promise<boolean> {
     try {
       logger.debug('Storing QBO tokens for user', { clerkUserId, realmId: tokens.realm_id });
       
-      // First, deactivate any existing tokens for this user
-      await this.deactivateExistingTokens(clerkUserId);
-      
-      const now = new Date();
       const expiresIn = tokens.expires_in || (12 * 60 * 60); // Default 12 hours in seconds
-      const expiresAt = new Date(now.getTime() + (expiresIn * 1000));
       
-      const tokenData = {
-        user_id: clerkUserId,
-        access_token: tokens.access_token,
-        refresh_token: tokens.refresh_token,
-        realm_id: tokens.realm_id,
-        token_type: tokens.token_type || 'Bearer',
-        expires_in: expiresIn,
-        expires_at: expiresAt.toISOString(),
-        is_active: true,
-        created_at: now.toISOString(),
-        updated_at: now.toISOString()
-      };
-
-      const { error } = await supabase
-        .from(this.TABLE_NAME)
-        .insert([tokenData]);
+      // Use RPC function for atomic operation
+      const { data, error } = await supabase.rpc('store_qbo_token', {
+        p_user_id: clerkUserId,
+        p_access_token: tokens.access_token,
+        p_refresh_token: tokens.refresh_token || '',
+        p_realm_id: tokens.realm_id,
+        p_expires_in: expiresIn
+      });
 
       if (error) {
         logger.error('Failed to store QBO tokens', error);
         return false;
       }
 
-      logger.info('QBO tokens stored successfully');
+      logger.info('QBO tokens stored successfully via RPC function');
       return true;
     } catch (error) {
       logger.error('Unexpected error storing QBO tokens', error);
@@ -149,31 +148,37 @@ export class QBOTokenService {
   }
 
   /**
-   * Retrieve active QBO tokens for a user
+   * Retrieve active QBO tokens for a user using RPC function
    */
   static async getTokens(clerkUserId: string): Promise<StoredQBOTokens | null> {
     try {
       logger.debug('Retrieving QBO tokens for user', { clerkUserId });
 
-      const { data, error } = await supabase
-        .from(this.TABLE_NAME)
-        .select('*')
-        .eq('user_id', clerkUserId)
-        .eq('is_active', true)
-        .order('created_at', { ascending: false })
-        .limit(1);
+      const { data, error } = await supabase.rpc('get_qbo_token', {
+        p_user_id: clerkUserId
+      });
 
       if (error) {
         logger.error('Failed to retrieve QBO tokens', error);
         return null;
       }
 
-      if (!data || data.length === 0) {
+      // Handle RPC response format consistently
+      if (!data || !data.success || !data.data) {
         logger.debug('No active QBO tokens found for user');
         return null;
       }
 
-      const tokens = data[0] as StoredQBOTokens;
+      // Normalize data.data to always handle as array, then extract first token
+      const tokenArray = Array.isArray(data.data) ? data.data : [data.data];
+      const tokenData = tokenArray[0];
+      
+      if (!tokenData) {
+        logger.debug('No active QBO tokens found for user');
+        return null;
+      }
+
+      const tokens = tokenData as StoredQBOTokens;
       logger.debug('Retrieved QBO tokens', { realmId: tokens.realm_id });
       return tokens;
     } catch (error) {
@@ -183,25 +188,44 @@ export class QBOTokenService {
   }
 
   /**
-   * Update existing tokens (for token refresh)
+   * Update existing tokens (for token refresh) using RPC function
    */
   static async updateTokens(clerkUserId: string, tokens: Partial<QBOTokens>): Promise<boolean> {
     try {
       logger.debug('Updating QBO tokens for user', { clerkUserId });
 
-      const updateData = {
-        ...tokens,
-        updated_at: new Date().toISOString()
-      };
+      // Validate required access_token
+      if (!tokens.access_token) {
+        logger.error('Missing access_token in tokens for update');
+        return false;
+      }
 
-      const { error } = await supabase
-        .from(this.TABLE_NAME)
-        .update(updateData)
-        .eq('user_id', clerkUserId)
-        .eq('is_active', true);
+      // Get realm_id from existing tokens if not provided
+      let realmId = tokens.realm_id;
+      if (!realmId) {
+        const existingTokens = await this.getTokens(clerkUserId);
+        if (!existingTokens) {
+          logger.error('No existing tokens found to update');
+          return false;
+        }
+        realmId = existingTokens.realm_id;
+      }
+
+      const { data, error } = await supabase.rpc('update_qbo_token', {
+        p_user_id: clerkUserId,
+        p_realm_id: realmId,
+        p_access_token: tokens.access_token,
+        p_refresh_token: tokens.refresh_token === undefined ? null : tokens.refresh_token,
+        p_expires_in: tokens.expires_in === undefined ? null : tokens.expires_in
+      });
 
       if (error) {
         logger.error('Failed to update QBO tokens', error);
+        return false;
+      }
+
+      if (!data || !data.success) {
+        logger.error('Failed to update QBO tokens', data?.message || 'Unknown error');
         return false;
       }
 
@@ -222,27 +246,25 @@ export class QBOTokenService {
   }
 
   /**
-   * Deactivate all tokens for a user (on logout or new connection)
+   * Deactivate all tokens for a user using RPC function
    */
   static async deactivateExistingTokens(clerkUserId: string): Promise<boolean> {
     try {
       logger.debug('Deactivating existing QBO tokens for user', { clerkUserId });
 
-      const { error } = await supabase
-        .from(this.TABLE_NAME)
-        .update({ 
-          is_active: false,
-          updated_at: new Date().toISOString()
-        })
-        .eq('user_id', clerkUserId)
-        .eq('is_active', true);
+      const { data, error } = await supabase.rpc('deactivate_qbo_tokens', {
+        p_user_id: clerkUserId
+      });
 
       if (error) {
         logger.error('Failed to deactivate existing QBO tokens', error);
         return false;
       }
 
-      logger.info('Existing QBO tokens deactivated successfully');
+      if (data && data.success) {
+        logger.info('Existing QBO tokens deactivated successfully', { count: data.count });
+      }
+      
       return true;
     } catch (error) {
       logger.error('Unexpected error deactivating QBO tokens', error);
@@ -251,7 +273,15 @@ export class QBOTokenService {
   }
 
   /**
+   * Clear tokens for a user (alias for clearUserData)
+   */
+  static async clearTokens(clerkUserId: string): Promise<boolean> {
+    return this.clearUserData(clerkUserId);
+  }
+
+  /**
    * Clear all QBO data for a user (called on logout)
+   * Now uses delete instead of deactivate for permanent removal
    */
   static async clearUserData(clerkUserId: string): Promise<boolean> {
     try {
@@ -261,14 +291,21 @@ export class QBOTokenService {
       this.refreshInProgress.delete(clerkUserId);
       this.refreshAttempts.delete(clerkUserId);
       
-      // Deactivate tokens
-      const success = await this.deactivateExistingTokens(clerkUserId);
-      
-      if (success) {
-        logger.info('All QBO data cleared for user');
+      // Delete tokens permanently using RPC function
+      const { data, error } = await supabase.rpc('delete_qbo_tokens', {
+        p_user_id: clerkUserId
+      });
+
+      if (error) {
+        logger.error('Failed to clear QBO tokens', error);
+        return false;
       }
       
-      return success;
+      if (data && data.success) {
+        logger.info('All QBO data cleared for user', { count: data.count });
+      }
+      
+      return true;
     } catch (error) {
       logger.error('Unexpected error clearing QBO data', error);
       return false;
@@ -372,12 +409,25 @@ export class QBOTokenService {
       // Check if tokens are expired or near expiry
       if (this.isTokenExpired(tokens)) {
         logger.info('Tokens are expired, attempting refresh', { clerkUserId });
-        return await this.refreshAccessToken(clerkUserId);
+        try {
+          return await this.refreshAccessToken(clerkUserId);
+        } catch (refreshError: any) {
+          // If refresh fails on expired tokens, clear them for fresh OAuth
+          logger.error('Failed to refresh expired tokens, clearing for re-authentication', refreshError);
+          await this.clearTokens(clerkUserId);
+          return false;
+        }
       }
 
       if (this.isTokenNearExpiry(tokens)) {
         logger.info('Tokens near expiry, proactively refreshing', { clerkUserId });
-        return await this.refreshAccessToken(clerkUserId);
+        try {
+          return await this.refreshAccessToken(clerkUserId);
+        } catch (refreshError: any) {
+          // If it's near expiry and refresh fails, we can still try using the existing token
+          logger.warn('Failed to proactively refresh tokens, will use existing tokens', refreshError);
+          return true; // Return true to try with existing tokens
+        }
       }
 
       logger.debug('Tokens are valid', { clerkUserId });
@@ -462,14 +512,45 @@ export class QBOTokenService {
         // client_secret is added server-side by N8N proxy for security
       };
 
-      const response = await fetch(config.tokenEndpoint, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'User-Agent': 'Adaptive-Book-Hygiene/1.0.0'
-        },
-        body: JSON.stringify(requestBody)
-      });
+      // Add AbortController for timeout
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+
+      let response: Response;
+      try {
+        response = await fetch(config.tokenEndpoint, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'User-Agent': 'Adaptive-Book-Hygiene/1.0.0'
+          },
+          body: JSON.stringify(requestBody),
+          signal: controller.signal
+        });
+      } catch (error: any) {
+        clearTimeout(timeoutId);
+        
+        // Handle timeout or network errors
+        if (error.name === 'AbortError') {
+          logger.error('Token refresh request timed out');
+        } else {
+          logger.error('Network error during token refresh', error);
+        }
+        
+        // Treat timeout/network errors as invalid grant - clear tokens and require re-auth
+        logger.info('Clearing tokens due to refresh failure, re-authentication required');
+        await this.deactivateExistingTokens(clerkUserId);
+        
+        throw new OAuthTokenError(
+          OAuthErrorType.INVALID_GRANT,
+          'Token refresh failed - re-authentication required',
+          error,
+          false,
+          true
+        );
+      } finally {
+        clearTimeout(timeoutId);
+      }
 
       if (!response.ok) {
         await this.handleRefreshError(response, clerkUserId);
@@ -531,22 +612,39 @@ export class QBOTokenService {
       errorBody = { error: 'unknown_error', error_description: await response.text() };
     }
 
-    const errorType = this.mapOAuthError(errorBody.error || 'unknown_error');
+    // Handle N8N webhook error format
+    let oauthError = errorBody.error;
+    let errorDescription = errorBody.error_description;
+    
+    // Check if this is an N8N-wrapped error response
+    if (errorBody.errorDescription === 'invalid_grant' || 
+        errorBody.errorDetails?.rawErrorMessage?.[0]?.includes('invalid_grant')) {
+      oauthError = 'invalid_grant';
+      errorDescription = 'Incorrect Token type or clientID - tokens were created with a different app';
+    }
+
+    const errorType = this.mapOAuthError(oauthError || 'unknown_error');
     const isRetryable = this.isRetryableError(errorType, response.status);
     const requiresReauth = this.requiresReauthentication(errorType);
 
     logger.error('Token refresh failed', {
       status: response.status,
-      error: errorBody.error,
-      description: errorBody.error_description,
+      error: oauthError,
+      description: errorDescription,
       type: errorType,
       isRetryable,
       requiresReauth
     });
 
+    // For invalid_grant errors, immediately clear tokens (no retry needed)
+    if (errorType === OAuthErrorType.INVALID_GRANT) {
+      logger.info('Invalid grant detected - clearing invalid tokens for re-authentication');
+      await this.deactivateExistingTokens(clerkUserId);
+    }
+
     throw new OAuthTokenError(
       errorType,
-      errorBody.error_description || errorBody.error || `HTTP ${response.status}: Token refresh failed`,
+      errorDescription || oauthError || `HTTP ${response.status}: Token refresh failed`,
       errorBody,
       isRetryable,
       requiresReauth

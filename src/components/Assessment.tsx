@@ -473,11 +473,26 @@ const Assessment = ({
       );
     } catch (error) {
       logger.error("Error fetching financial data via webhook:", error);
-      setDataFetchError(
-        error instanceof Error
-          ? error.message
-          : "Failed to fetch financial data from webhook",
-      );
+      const errorMessage = error instanceof Error ? error.message : "Failed to fetch financial data from webhook";
+      setDataFetchError(errorMessage);
+
+      // Check if this is an authentication error that requires re-auth
+      if (errorMessage.toLowerCase().includes('expired') || 
+          errorMessage.toLowerCase().includes('authentication') || 
+          errorMessage.toLowerCase().includes('reconnect')) {
+        logger.info("Authentication error detected, tokens already cleared by service");
+        
+        // Tokens are already cleared by the service, just redirect
+        // Redirect to QBO auth after a short delay to show the error
+        setTimeout(() => {
+          navigate('/qbo-auth', { 
+            state: { 
+              formData, 
+              error: errorMessage 
+            } 
+          });
+        }, 2000);
+      }
 
       // Mark all pillars as error
       setPillarImportStatus((prevStatus) => {
