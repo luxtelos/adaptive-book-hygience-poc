@@ -1,9 +1,19 @@
 import React from "react";
 import { Link } from "react-router-dom";
-import { SignedIn, SignedOut, SignInButton, SignUpButton, UserButton, useUser } from "@clerk/clerk-react";
+import { SignedIn, SignedOut, UserButton, useUser } from "@clerk/clerk-react";
+import { useEulaAwareAuth } from "../hooks/useEulaAwareAuth";
+import EulaModal from "./EulaModal";
 
 const Header: React.FC = () => {
   const { user } = useUser();
+  const {
+    showEulaModal,
+    pendingAuthAction,
+    handleAuthAction,
+    handleEulaAgree,
+    handleEulaDisagree,
+    handleEulaClose,
+  } = useEulaAwareAuth();
 
   return (
     <div className="bg-white shadow-sm">
@@ -16,16 +26,18 @@ const Header: React.FC = () => {
           </div>
           <div className="flex items-center space-x-4">
             <SignedOut>
-              <SignInButton mode="modal">
-                <button className="text-gray-600 hover:text-gray-900">
-                  Login
-                </button>
-              </SignInButton>
-              <SignUpButton mode="modal">
-                <button className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors">
-                  Sign Up
-                </button>
-              </SignUpButton>
+              <button 
+                onClick={() => handleAuthAction('signin')}
+                className="text-gray-600 hover:text-gray-900"
+              >
+                Login
+              </button>
+              <button 
+                onClick={() => handleAuthAction('signup')}
+                className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
+              >
+                Sign Up
+              </button>
             </SignedOut>
             <SignedIn>
               <span className="text-gray-600">
@@ -36,6 +48,14 @@ const Header: React.FC = () => {
           </div>
         </div>
       </div>
+      
+      {/* EULA Modal */}
+      <EulaModal
+        isOpen={showEulaModal}
+        onAgree={handleEulaAgree}
+        onDisagree={handleEulaDisagree}
+        onClose={handleEulaClose}
+      />
     </div>
   );
 };

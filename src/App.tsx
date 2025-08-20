@@ -14,6 +14,8 @@ import OAuthCallback from "./components/OAuthCallBack"; // Fixed typo
 import Assessment from "./components/Assessment";
 import Privacy from "./components/Privacy";
 import EULA from "./components/EULA";
+import SignUpPage from "./components/SignUpPage";
+import SignInPage from "./components/SignInPage";
 import { QBOServiceProvider } from "./services/QBOServiceContext";
 import { QBOTokenService } from "./services/qboTokenService";
 import { useLogoutCleanup } from "./hooks/useLogoutCleanup";
@@ -241,6 +243,10 @@ function AppContent() {
         {/* Public routes for legal pages */}
         <Route path="/privacy" element={<Privacy />} />
         <Route path="/eula" element={<EULA />} />
+
+        {/* Authentication routes */}
+        <Route path="/signup" element={<SignUpPage />} />
+        <Route path="/signin" element={<SignInPage />} />
 
         {/* Catch all - redirect based on auth status */}
         <Route

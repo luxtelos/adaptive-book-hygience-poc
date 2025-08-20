@@ -18,14 +18,24 @@ import {
   ReloadIcon,
 } from "@radix-ui/react-icons";
 import { useUserAssessment } from "../hooks/useUserAssessment";
+import { useEulaAwareAuth } from "../hooks/useEulaAwareAuth";
 import logger from "../lib/logger";
 import Header from "./Header";
 import Footer from "./Footer";
+import EulaModal from "./EulaModal";
 
 const LandingPage: React.FC = () => {
   const navigate = useNavigate();
   const { user, isLoaded } = useUser();
   const { userAssessment, isCheckingData } = useUserAssessment();
+  const {
+    showEulaModal,
+    pendingAuthAction,
+    handleAuthAction,
+    handleEulaAgree,
+    handleEulaDisagree,
+    handleEulaClose,
+  } = useEulaAwareAuth();
 
   const handleGetStarted = () => {
     const hasAssessment = !!userAssessment;
@@ -62,23 +72,27 @@ const LandingPage: React.FC = () => {
                 financial records are accurate and reliable.
               </p>
               <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
-                <SignUpButton mode="modal">
-                  <button className="bg-blue-600 text-white px-8 py-4 rounded-lg text-lg font-semibold hover:bg-blue-700 transition-colors flex items-center">
-                    Start Free Assessment{" "}
-                    <ArrowRightIcon className="w-5 h-5 ml-2" />
-                  </button>
-                </SignUpButton>
+                <button
+                  onClick={() => handleAuthAction('signup')}
+                  className="bg-blue-600 text-white px-8 py-4 rounded-lg text-lg font-semibold hover:bg-blue-700 transition-colors flex items-center"
+                >
+                  Start Free Assessment{" "}
+                  <ArrowRightIcon className="w-5 h-5 ml-2" />
+                </button>
                 <div className="flex items-center space-x-2 text-gray-600">
                   <CheckCircledIcon className="w-5 h-5 text-green-500" />
                   <span>Free • 5 minutes • Instant results</span>
                 </div>
               </div>
-              <div className="mt-4">
-                <SignInButton mode="modal">
-                  <button className="text-blue-600 hover:text-blue-800 underline">
-                    Already have an account? Sign in
-                  </button>
-                </SignInButton>
+              
+              <div className="mt-6 text-center">
+                <p className="text-gray-600 mb-4">Already have an account?</p>
+                <button
+                  onClick={() => handleAuthAction('signin')}
+                  className="text-blue-600 hover:text-blue-800 underline text-lg font-medium"
+                >
+                  Sign In Here
+                </button>
               </div>
             </SignedOut>
 
@@ -519,12 +533,13 @@ const LandingPage: React.FC = () => {
               Join hundreds of business owners who've discovered and fixed
               critical issues in their financial records.
             </p>
-            <SignUpButton mode="modal">
-              <button className="bg-white text-blue-600 px-8 py-4 rounded-lg text-lg font-semibold hover:bg-gray-50 transition-colors flex items-center mx-auto">
-                Start Your Free Assessment{" "}
-                <ArrowRightIcon className="w-5 h-5 ml-2" />
-              </button>
-            </SignUpButton>
+            <button
+              onClick={() => handleAuthAction('signup')}
+              className="bg-white text-blue-600 px-8 py-4 rounded-lg text-lg font-semibold hover:bg-gray-50 transition-colors flex items-center mx-auto"
+            >
+              Start Your Free Assessment{" "}
+              <ArrowRightIcon className="w-5 h-5 ml-2" />
+            </button>
           </SignedOut>
 
           <SignedIn>
@@ -548,6 +563,14 @@ const LandingPage: React.FC = () => {
           </SignedIn>
         </div>
       </div>
+
+      {/* EULA Modal */}
+      <EulaModal
+        isOpen={showEulaModal}
+        onAgree={handleEulaAgree}
+        onDisagree={handleEulaDisagree}
+        onClose={handleEulaClose}
+      />
 
       <Footer />
     </div>
