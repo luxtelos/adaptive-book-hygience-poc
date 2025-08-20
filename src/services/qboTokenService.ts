@@ -116,42 +116,30 @@ export class QBOTokenService {
   }
   
   /**
-   * Store QBO tokens for a user (encrypted in database)
+   * Store QBO tokens for a user using atomic RPC function
+   * Handles delete-then-insert in a single transaction to prevent conflicts
    */
   static async storeTokens(clerkUserId: string, tokens: QBOTokens): Promise<boolean> {
     try {
       logger.debug('Storing QBO tokens for user', { clerkUserId, realmId: tokens.realm_id });
       
-      // First, deactivate any existing tokens for this user
-      await this.deactivateExistingTokens(clerkUserId);
-      
-      const now = new Date();
       const expiresIn = tokens.expires_in || (12 * 60 * 60); // Default 12 hours in seconds
-      const expiresAt = new Date(now.getTime() + (expiresIn * 1000));
       
-      const tokenData = {
-        user_id: clerkUserId,
-        access_token: tokens.access_token,
-        refresh_token: tokens.refresh_token,
-        realm_id: tokens.realm_id,
-        token_type: tokens.token_type || 'Bearer',
-        expires_in: expiresIn,
-        expires_at: expiresAt.toISOString(),
-        is_active: true,
-        created_at: now.toISOString(),
-        updated_at: now.toISOString()
-      };
-
-      const { error } = await supabase
-        .from(this.TABLE_NAME)
-        .insert([tokenData]);
+      // Use RPC function for atomic operation
+      const { data, error } = await supabase.rpc('store_qbo_token', {
+        p_user_id: clerkUserId,
+        p_access_token: tokens.access_token,
+        p_refresh_token: tokens.refresh_token || '',
+        p_realm_id: tokens.realm_id,
+        p_expires_in: expiresIn
+      });
 
       if (error) {
         logger.error('Failed to store QBO tokens', error);
         return false;
       }
 
-      logger.info('QBO tokens stored successfully');
+      logger.info('QBO tokens stored successfully via RPC function');
       return true;
     } catch (error) {
       logger.error('Unexpected error storing QBO tokens', error);
@@ -160,31 +148,37 @@ export class QBOTokenService {
   }
 
   /**
-   * Retrieve active QBO tokens for a user
+   * Retrieve active QBO tokens for a user using RPC function
    */
   static async getTokens(clerkUserId: string): Promise<StoredQBOTokens | null> {
     try {
       logger.debug('Retrieving QBO tokens for user', { clerkUserId });
 
-      const { data, error } = await supabase
-        .from(this.TABLE_NAME)
-        .select('*')
-        .eq('user_id', clerkUserId)
-        .eq('is_active', true)
-        .order('created_at', { ascending: false })
-        .limit(1);
+      const { data, error } = await supabase.rpc('get_qbo_token', {
+        p_user_id: clerkUserId
+      });
 
       if (error) {
         logger.error('Failed to retrieve QBO tokens', error);
         return null;
       }
 
-      if (!data || data.length === 0) {
+      // Handle RPC response format consistently
+      if (!data || !data.success || !data.data) {
         logger.debug('No active QBO tokens found for user');
         return null;
       }
 
-      const tokens = data[0] as StoredQBOTokens;
+      // Normalize data.data to always handle as array, then extract first token
+      const tokenArray = Array.isArray(data.data) ? data.data : [data.data];
+      const tokenData = tokenArray[0];
+      
+      if (!tokenData) {
+        logger.debug('No active QBO tokens found for user');
+        return null;
+      }
+
+      const tokens = tokenData as StoredQBOTokens;
       logger.debug('Retrieved QBO tokens', { realmId: tokens.realm_id });
       return tokens;
     } catch (error) {
@@ -194,25 +188,44 @@ export class QBOTokenService {
   }
 
   /**
-   * Update existing tokens (for token refresh)
+   * Update existing tokens (for token refresh) using RPC function
    */
   static async updateTokens(clerkUserId: string, tokens: Partial<QBOTokens>): Promise<boolean> {
     try {
       logger.debug('Updating QBO tokens for user', { clerkUserId });
 
-      const updateData = {
-        ...tokens,
-        updated_at: new Date().toISOString()
-      };
+      // Validate required access_token
+      if (!tokens.access_token) {
+        logger.error('Missing access_token in tokens for update');
+        return false;
+      }
 
-      const { error } = await supabase
-        .from(this.TABLE_NAME)
-        .update(updateData)
-        .eq('user_id', clerkUserId)
-        .eq('is_active', true);
+      // Get realm_id from existing tokens if not provided
+      let realmId = tokens.realm_id;
+      if (!realmId) {
+        const existingTokens = await this.getTokens(clerkUserId);
+        if (!existingTokens) {
+          logger.error('No existing tokens found to update');
+          return false;
+        }
+        realmId = existingTokens.realm_id;
+      }
+
+      const { data, error } = await supabase.rpc('update_qbo_token', {
+        p_user_id: clerkUserId,
+        p_realm_id: realmId,
+        p_access_token: tokens.access_token,
+        p_refresh_token: tokens.refresh_token === undefined ? null : tokens.refresh_token,
+        p_expires_in: tokens.expires_in === undefined ? null : tokens.expires_in
+      });
 
       if (error) {
         logger.error('Failed to update QBO tokens', error);
+        return false;
+      }
+
+      if (!data || !data.success) {
+        logger.error('Failed to update QBO tokens', data?.message || 'Unknown error');
         return false;
       }
 
@@ -233,27 +246,25 @@ export class QBOTokenService {
   }
 
   /**
-   * Deactivate all tokens for a user (on logout or new connection)
+   * Deactivate all tokens for a user using RPC function
    */
   static async deactivateExistingTokens(clerkUserId: string): Promise<boolean> {
     try {
       logger.debug('Deactivating existing QBO tokens for user', { clerkUserId });
 
-      const { error } = await supabase
-        .from(this.TABLE_NAME)
-        .update({ 
-          is_active: false,
-          updated_at: new Date().toISOString()
-        })
-        .eq('user_id', clerkUserId)
-        .eq('is_active', true);
+      const { data, error } = await supabase.rpc('deactivate_qbo_tokens', {
+        p_user_id: clerkUserId
+      });
 
       if (error) {
         logger.error('Failed to deactivate existing QBO tokens', error);
         return false;
       }
 
-      logger.info('Existing QBO tokens deactivated successfully');
+      if (data && data.success) {
+        logger.info('Existing QBO tokens deactivated successfully', { count: data.count });
+      }
+      
       return true;
     } catch (error) {
       logger.error('Unexpected error deactivating QBO tokens', error);
@@ -270,6 +281,7 @@ export class QBOTokenService {
 
   /**
    * Clear all QBO data for a user (called on logout)
+   * Now uses delete instead of deactivate for permanent removal
    */
   static async clearUserData(clerkUserId: string): Promise<boolean> {
     try {
@@ -279,14 +291,21 @@ export class QBOTokenService {
       this.refreshInProgress.delete(clerkUserId);
       this.refreshAttempts.delete(clerkUserId);
       
-      // Deactivate tokens
-      const success = await this.deactivateExistingTokens(clerkUserId);
-      
-      if (success) {
-        logger.info('All QBO data cleared for user');
+      // Delete tokens permanently using RPC function
+      const { data, error } = await supabase.rpc('delete_qbo_tokens', {
+        p_user_id: clerkUserId
+      });
+
+      if (error) {
+        logger.error('Failed to clear QBO tokens', error);
+        return false;
       }
       
-      return success;
+      if (data && data.success) {
+        logger.info('All QBO data cleared for user', { count: data.count });
+      }
+      
+      return true;
     } catch (error) {
       logger.error('Unexpected error clearing QBO data', error);
       return false;
