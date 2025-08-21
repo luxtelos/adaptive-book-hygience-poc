@@ -40,7 +40,7 @@ BEGIN
         expires_in, expires_at, is_active
     ) VALUES (
         p_user_id, p_access_token, p_refresh_token, p_realm_id,
-        p_expires_in, NOW() + (p_expires_in || ' seconds')::INTERVAL,
+        COALESCE(p_expires_in, 3600), NOW() + (COALESCE(p_expires_in, 3600) || ' seconds')::INTERVAL,
         true
     ) RETURNING to_json(qbo_tokens.*) INTO v_result;
     
