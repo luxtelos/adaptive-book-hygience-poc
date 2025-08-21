@@ -1,7 +1,7 @@
 # ADR-010: QuickBooks Single Admin Enforcement
 
 ## Date
-2024-01-22
+2025-01-22
 
 ## Status
 Accepted
