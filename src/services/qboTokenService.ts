@@ -139,6 +139,21 @@ export class QBOTokenService {
         return false;
       }
 
+      // Check if store operation succeeded
+      if (!data || !data.success) {
+        logger.error('Store token operation failed', data);
+        return false;
+      }
+
+      // Log if admin changed
+      if (data.admin_changed) {
+        logger.warn('QBO admin changed for company', {
+          realm_id: tokens.realm_id,
+          previous_user: data.previous_user,
+          new_user: clerkUserId
+        });
+      }
+
       logger.info('QBO tokens stored successfully via RPC function');
       return true;
     } catch (error) {
