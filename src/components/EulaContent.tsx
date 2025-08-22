@@ -201,7 +201,7 @@ const EulaContent: React.FC<EulaContentProps> = ({
           10. Compliance and Export Controls
         </HeadingComponent>
         <p>
-          You agree to comply—with all applicable laws, including export control laws and regulations. You represent that you are not located in, or a national of, any country subject to U.S. government embargo or designated as a "terrorist supporting" country, and that you are not on any U.S. government list of prohibited or restricted parties.
+          You agree to comply with all applicable laws, including export control laws and regulations. You represent that you are not located in, or a national of, any country subject to U.S. government embargo or designated as a "terrorist supporting" country, and that you are not on any U.S. government list of prohibited or restricted parties.
         </p>
       </section>
 
