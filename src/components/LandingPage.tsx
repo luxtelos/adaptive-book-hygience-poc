@@ -71,6 +71,10 @@ const LandingPage: React.FC = () => {
                 minutes. Identify issues, fix problems, and ensure your
                 financial records are accurate and reliable.
               </p>
+               <div className="flex items-center justify-center mb-4 space-x-2 text-gray-600">
+                  <CheckCircledIcon className="w-5 h-5 text-green-500" />
+                  <span>Start Your 5-Minute Book Hygiene Assessment</span>
+                </div>
               <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
                 <button
                   onClick={() => handleAuthAction('signup')}
@@ -79,17 +83,13 @@ const LandingPage: React.FC = () => {
                   Start Free Assessment{" "}
                   <ArrowRightIcon className="w-5 h-5 ml-2" />
                 </button>
-                <div className="flex items-center space-x-2 text-gray-600">
-                  <CheckCircledIcon className="w-5 h-5 text-green-500" />
-                  <span>Free • 5 minutes • Instant results</span>
-                </div>
               </div>
               
               <div className="mt-6 text-center">
-                <p className="text-gray-600 mb-4">Already have an account?</p>
+                <p className="text-gray-600">Already have an account?</p>
                 <button
                   onClick={() => handleAuthAction('signin')}
-                  className="text-blue-600 hover:text-blue-800 underline text-lg font-medium"
+                  className="text-blue-600 hover:text-blue-800 underline text-md font-medium"
                 >
                   Sign In Here
                 </button>
