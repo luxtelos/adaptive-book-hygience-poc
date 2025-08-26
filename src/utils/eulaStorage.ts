@@ -62,6 +62,7 @@ export class EulaStorage {
   static forceResetForTesting(): void {
     EulaStorage.clearEulaAcceptance();
     console.log('EULA acceptance cleared for testing');
+
   }
 }
 
