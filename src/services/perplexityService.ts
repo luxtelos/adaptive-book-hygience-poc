@@ -31,7 +31,6 @@ export interface HygienePillarScores {
  */
 export interface HygieneAssessmentResult {
   overallScore: number; // 0-100 composite score
-  pillarScores: HygienePillarScores;
   readinessStatus:
     | "READY_FOR_MONTHLY_OPERATIONS"
     | "MINOR_FIXES_NEEDED"
@@ -148,16 +147,6 @@ export class PerplexityService {
     logger.info("PerplexityService initialized successfully");
   }
 
-  /**
-   * Generate health score label based on numeric score
-   */
-  private getHealthScoreLabel(score: number): string {
-    if (score >= 90) return "EXCELLENT - Minimal cleanup required";
-    if (score >= 75) return "GOOD - Minor adjustments needed";
-    if (score >= 60) return "FAIR - Moderate cleanup required";
-    if (score >= 50) return "POOR - Significant work needed";
-    return "CRITICAL - Extensive remediation required";
-  }
 
   /**
    * Loads the hygiene assessment prompt from the public directory.
@@ -179,25 +168,6 @@ export class PerplexityService {
         error,
       );
     }
-  }
-
-  /**
-   * Formats QBO data for LLM analysis - passes raw QBO data
-   */
-  private formatQBODataForAnalysis(data: QBODataPackage): string {
-    // Just pass the entire raw data object to the LLM
-    return (
-      "=== QUICKBOOKS ONLINE DATA FOR ANALYSIS ===\n\n" +
-      `Data Period: ${data.datePeriod?.startDate} to ${data.datePeriod?.endDate}\n\n` +
-      "INSTRUCTIONS FOR ANALYSIS:\n" +
-      "1. Calculate scores based on actual data quality and completeness\n" +
-      "2. Identify specific issues with exact dollar amounts and account names\n" +
-      "3. Provide actionable, QuickBooks-specific remediation steps\n" +
-      "4. Use business-friendly language in the executive summary\n" +
-      "5. Be specific about locations in QuickBooks (menu paths)\n\n" +
-      "RAW QUICKBOOKS DATA:\n" +
-      JSON.stringify(data, null, 2)
-    );
   }
 
   /**
@@ -400,47 +370,7 @@ export class PerplexityService {
         }
       }
 
-      // Extract pillar scores
-      const pillarScores = {
-        reconciliation: 0,
-        coaIntegrity: 0,
-        categorization: 0,
-        controlAccount: 0,
-        aging: 0,
-      };
-
-      const pillarPatterns = [
-        {
-          key: "reconciliation",
-          pattern:
-            /(?:Bank\s*&?\s*Credit\s*Card\s*Matching|Reconciliation)[:\s]*(\d+)(?:\/100)?/i,
-        },
-        {
-          key: "coaIntegrity",
-          pattern:
-            /(?:Money\s*Organization\s*System|Chart\s*of\s*Accounts)[:\s]*(\d+)(?:\/100)?/i,
-        },
-        {
-          key: "categorization",
-          pattern: /(?:Transaction\s*)?Categorization[:\s]*(\d+)(?:\/100)?/i,
-        },
-        {
-          key: "controlAccount",
-          pattern: /Control\s*Account\s*(?:Accuracy)?[:\s]*(\d+)(?:\/100)?/i,
-        },
-        {
-          key: "aging",
-          pattern:
-            /(?:Customer\/Vendor\s*Balances|A\/R\s*&?\s*A\/P|Aging)[:\s]*(\d+)(?:\/100)?/i,
-        },
-      ];
-
-      for (const { key, pattern } of pillarPatterns) {
-        const match = response.match(pattern);
-        if (match) {
-          pillarScores[key as keyof typeof pillarScores] = parseInt(match[1]);
-        }
-      }
+      // Pillar scores no longer extracted as we only use raw QBO data
 
       // Extract next steps
       const nextSteps: string[] = [];
@@ -463,27 +393,12 @@ export class PerplexityService {
       // Build the result
       const result: HygieneAssessmentResult = {
         overallScore,
-        pillarScores,
         readinessStatus,
         businessOwnerSummary: {
-          healthScore: `${overallScore}/100${scoreCategory ? " - " + scoreCategory : ""}`,
+          healthScore: scoreCategory ? `${overallScore}/100 - ${scoreCategory}` : `${overallScore}/100`,
           whatThisMeans: this.extractWhatThisMeans(response, overallScore),
-          keyFindings:
-            keyFindings.length > 0
-              ? keyFindings
-              : [
-                  "Assessment completed",
-                  `Overall health score: ${overallScore}/100`,
-                  `Status: ${readinessStatus.replace(/_/g, " ").toLowerCase()}`,
-                ],
-          nextSteps:
-            nextSteps.length > 0
-              ? nextSteps
-              : [
-                  "Review assessment results",
-                  "Prioritize critical issues",
-                  "Begin remediation process",
-                ],
+          keyFindings: keyFindings,
+          nextSteps: nextSteps,
         },
         bookkeeperReport: {
           criticalIssues: this.extractCriticalIssues(response),
@@ -535,16 +450,8 @@ export class PerplexityService {
       }
     }
 
-    // Default based on score
-    if (score >= 85) {
-      return "Your financial books are in excellent condition and ready for monthly bookkeeping operations.";
-    } else if (score >= 70) {
-      return "Your books are in good shape but need minor adjustments before monthly operations can begin smoothly.";
-    } else if (score >= 50) {
-      return "Your books require moderate cleanup to ensure accurate financial reporting and compliance.";
-    } else {
-      return "Your books need significant remediation work before they are ready for regular bookkeeping operations.";
-    }
+    // No fallback - LLM must provide this
+    return '';
   }
 
   /**
@@ -667,32 +574,21 @@ export class PerplexityService {
   private createDefaultAssessmentResult(): HygieneAssessmentResult {
     return {
       overallScore: 0,
-      pillarScores: {
-        reconciliation: 0,
-        coaIntegrity: 0,
-        categorization: 0,
-        controlAccount: 0,
-        aging: 0,
-      },
       readinessStatus: "ADDITIONAL_CLEANUP_REQUIRED",
       businessOwnerSummary: {
-        healthScore: "0/100 - Assessment Incomplete",
-        whatThisMeans:
-          "Unable to complete the assessment due to data processing issues. Please try again or contact support.",
-        keyFindings: ["Assessment could not be completed"],
-        nextSteps: [
-          "Please retry the assessment",
-          "Contact support if issues persist",
-        ],
+        healthScore: '',
+        whatThisMeans: '',
+        keyFindings: [],
+        nextSteps: [],
       },
       bookkeeperReport: {
         criticalIssues: [],
-        recommendedImprovements: ["Assessment needs to be re-run"],
+        recommendedImprovements: [],
         ongoingMaintenance: [],
       },
       assessmentMetadata: {
         assessmentDate: new Date().toISOString().split("T")[0],
-        dataPeriod: "Unknown",
+        dataPeriod: '',
         scoringModel: "Day-30 Readiness Framework",
         limitations: [
           "Assessment could not be completed due to parsing errors",
@@ -708,15 +604,6 @@ export class PerplexityService {
     try {
       // Extract basic scores and status with validation
       const overallScore = this.validateScore(parsed.overallScore);
-      const pillarScores = {
-        reconciliation: this.validateScore(parsed.pillarScores?.reconciliation),
-        coaIntegrity: this.validateScore(parsed.pillarScores?.coaIntegrity),
-        categorization: this.validateScore(parsed.pillarScores?.categorization),
-        controlAccount: this.validateScore(
-          parsed.pillarScores?.controlAccounts,
-        ), // Note: mapping controlAccounts to controlAccount
-        aging: this.validateScore(parsed.pillarScores?.arApValidity), // Note: mapping arApValidity to aging
-      };
 
       // Map readiness status to expected enum values
       let readinessStatus:
@@ -738,17 +625,8 @@ export class PerplexityService {
       // Extract Section 1: Executive Summary (Business Owner)
       const section1 = parsed.section1_executiveSummary || {};
       const businessOwnerSummary = {
-        healthScore:
-          section1.healthScore || this.getHealthScoreLabel(overallScore),
-        whatThisMeans:
-          section1.whatThisMeans ||
-          `Your financial books scored ${overallScore}/100. ${
-            overallScore >= 75
-              ? "Your books are in good shape with minor improvements needed."
-              : overallScore >= 50
-                ? "Your books need moderate attention to improve accuracy and compliance."
-                : "Your books require significant remediation work before they are audit-ready."
-          }`,
+        healthScore: section1.healthScore || '',
+        whatThisMeans: section1.whatThisMeans || '',
         keyFindings: Array.isArray(section1.keyFindings)
           ? section1.keyFindings
           : [],
@@ -815,7 +693,6 @@ export class PerplexityService {
 
       const result: HygieneAssessmentResult = {
         overallScore,
-        pillarScores,
         readinessStatus,
         businessOwnerSummary,
         bookkeeperReport: {
@@ -845,28 +722,11 @@ export class PerplexityService {
     const result: HygieneAssessmentResult = {
       // These scores are placeholders - will be replaced with calculated scores
       overallScore: parsed.overallScore || 0,
-      pillarScores: {
-        reconciliation: parsed.pillarScores?.reconciliation || 0,
-        coaIntegrity: parsed.pillarScores?.coaIntegrity || 0,
-        categorization: parsed.pillarScores?.categorization || 0,
-        controlAccount: parsed.pillarScores?.controlAccount || 0,
-        aging: parsed.pillarScores?.aging || 0,
-      },
       readinessStatus: parsed.readinessStatus || "ADDITIONAL_CLEANUP_REQUIRED",
       // AI-generated insights and recommendations
       businessOwnerSummary: {
-        healthScore:
-          parsed.businessOwnerSummary?.healthScore ||
-          this.getHealthScoreLabel(parsed.overallScore || 0),
-        whatThisMeans:
-          parsed.businessOwnerSummary?.whatThisMeans ||
-          `Your financial books scored ${parsed.overallScore || 0}/100. ${
-            (parsed.overallScore || 0) >= 75
-              ? "Your books are in good shape with minor improvements needed."
-              : (parsed.overallScore || 0) >= 50
-                ? "Your books need moderate attention to improve accuracy and compliance."
-                : "Your books require significant remediation work before they are audit-ready."
-          }`,
+        healthScore: parsed.businessOwnerSummary?.healthScore || '',
+        whatThisMeans: parsed.businessOwnerSummary?.whatThisMeans || '',
         keyFindings: parsed.businessOwnerSummary?.keyFindings || [],
         nextSteps: parsed.businessOwnerSummary?.nextSteps || [],
       },
@@ -963,20 +823,10 @@ export class PerplexityService {
       // Load the assessment prompt
       const systemPrompt = await this.loadAssessmentPrompt();
 
-      // Format the data for analysis
-      let formattedData: string;
-      if (this.isWebhookAssessmentData(rawData)) {
-        // Use the JSON formatter for LLM analysis (not markdown formatter)
-        // The LLM needs structured data, not human-readable markdown
-        formattedData = this.formatWebhookAssessmentDataForAnalysis(rawData);
-        logger.info("Using structured JSON format for LLM analysis");
-      } else if (this.isFivePillarRawData(rawData)) {
-        formattedData = this.formatFivePillarDataForAnalysis(rawData);
-      } else {
-        formattedData = this.formatQBODataForAnalysis(
-          rawData as QBODataPackage,
-        );
-      }
+      // Format the webhook data for analysis - webhook is the ONLY data source
+      const formattedData =
+        this.formatWebhookAssessmentDataForAnalysis(rawData);
+      logger.info("Formatting raw QBO webhook data for LLM analysis");
 
       // Prepare the messages for the API
       const messages = [
@@ -986,88 +836,18 @@ export class PerplexityService {
         },
         {
           role: "user",
-          content: `
-FORMAT YOUR RESPONSE EXACTLY AS FOLLOWS (use this template structure):
+          content: `Please analyze the following raw QuickBooks Online JSON data and provide a comprehensive financial books health assessment report.
+          Here is the QuickBooks Online data to analyze:
 
-# OUTPUT FORMAT SPECIFICATION
-
-## SECTION 1: EXECUTIVE SUMMARY (Business Owner)
-
-FINANCIAL BOOKS HEALTH ASSESSMENT
-Overall Health Score: [X]/100 - [Category]
-
-WHAT THIS MEANS FOR YOUR BUSINESS:
-[Plain language explanation of current state and business impact]
-
-KEY FINDINGS:
-• [Major issues in simple terms]
-• [Positive aspects to acknowledge]
-• [Business impact of current state]
-
-RECOMMENDED NEXT STEPS:
-[Clear actions in business language]
-
-## SECTION 2: DETAILED ASSESSMENT RESULTS
-
-PILLAR BREAKDOWN:
-• Bank & Credit Card Matching: [Score]/100
-• Money Organization System: [Score]/100
-• Transaction Categorization: [Score]/100
-• Control Account Accuracy: [Score]/100
-• Customer/Vendor Balances: [Score]/100
-
-## SECTION 3: TECHNICAL REMEDIATION PLAN (Bookkeeper)
-
-CRITICAL ISSUES REQUIRING IMMEDIATE ACTION:
-Priority 1: [Issue Description]
-• Problem: [Technical description]
-• Location: [Exact QBO path]
-• Fix: [Step-by-step remedy]
-• Time: [Estimated hours]
-
-Priority 2: [Next issue]
-[Same format]
-
-RECOMMENDED IMPROVEMENTS:
-[Detailed technical steps with QBO navigation]
-
-ONGOING MAINTENANCE REQUIREMENTS:
-[Monthly/quarterly tasks to maintain hygiene]
-
-## SECTION 4: SCORING TRANSPARENCY
-
-ASSESSMENT METHODOLOGY SUMMARY:
-• Assessment Date: [Current date]
-• Data Period Analyzed: [Date range]
-• Scoring Model: Day-30 Readiness Framework
-• Repeatability: Same data will produce identical results
-• Limitations: [Any incomplete data areas]
-
-------------------------------------------------------------
-Please analyze the following raw QuickBooks Online JSON data and provide a comprehensive financial books health assessment report.
-Here is the QuickBooks Online data to analyze:
-
-${formattedData}`,
+          ${formattedData}`,
         },
       ];
 
-      // Enhanced validation for different data formats
-      let validation: {
-        isComplete: boolean;
-        missingData: string[];
-        warnings: string[];
-      };
-      if (this.isWebhookAssessmentData(rawData)) {
-        // For webhook data, validate the current assessment structure
-        validation = this.validateWebhookAssessmentData(rawData);
-      } else if (this.isFivePillarRawData(rawData)) {
-        validation = this.validateFivePillarDataCompleteness(rawData);
-      } else {
-        validation = this.validateDataCompleteness(rawData as QBODataPackage);
-      }
+      // Validate webhook data structure
+      const validation = this.validateWebhookAssessmentData(rawData);
 
       if (!validation.isComplete) {
-        logger.warn("Assessment data incomplete", {
+        logger.warn("Webhook assessment data incomplete", {
           missingData: validation.missingData,
           warnings: validation.warnings,
         });
@@ -1126,77 +906,7 @@ ${formattedData}`,
   }
 
   /**
-   * Validates that the QBO data package contains the minimum required data.
-   */
-  public validateDataCompleteness(data: QBODataPackage): {
-    isComplete: boolean;
-    missingData: string[];
-    warnings: string[];
-  } {
-    const missingData: string[] = [];
-    const warnings: string[] = [];
-
-    // Required data elements
-    if (!data.chartOfAccounts || data.chartOfAccounts.length === 0) {
-      missingData.push("Chart of Accounts");
-    }
-    if (!data.trialBalance) {
-      missingData.push("Trial Balance");
-    }
-    if (!data.generalLedger) {
-      warnings.push("General Ledger data may be incomplete");
-    }
-
-    // Important but not critical
-    if (!data.bankReconciliation) {
-      warnings.push(
-        "Bank reconciliation data not available - reconciliation assessment will be limited",
-      );
-    }
-    if (!data.arAging && !data.apAging) {
-      warnings.push(
-        "Aging reports not available - A/R and A/P assessment will be limited",
-      );
-    }
-
-    return {
-      isComplete: missingData.length === 0,
-      missingData,
-      warnings,
-    };
-  }
-
-  /**
-   * Type guard to check if data is FivePillarRawData
-   */
-  private isFivePillarRawData(data: any): data is FivePillarRawData {
-    return (
-      data &&
-      data.reconciliation &&
-      data.chartOfAccounts &&
-      data.categorization &&
-      data.controlAccounts &&
-      data.arApValidity &&
-      data.assessmentMetadata
-    );
-  }
-
-  /**
-   * Type guard to check if data is webhook assessment data format
-   */
-  private isWebhookAssessmentData(data: any): boolean {
-    // Check for either the full webhook response or the assessment data format from Assessment.tsx
-    return (
-      data &&
-      // Full webhook response format
-      ((data.pillarData && data.meta) ||
-        // Assessment data format with raw pillar data
-        (data.rawPillarData && data.financialMetrics))
-    );
-  }
-
-  /**
-   * Formats webhook assessment data for LLM analysis - passes raw QBO data
+   * Formats raw QBO data for LLM analysis
    */
   private formatWebhookAssessmentDataForAnalysis(data: any): string {
     const sections = [];
@@ -1236,9 +946,10 @@ ${formattedData}`,
     sections.push("• Bank account balances");
     sections.push("");
 
-    // Pass ALL raw data to the LLM
+    // Send the raw QBO data
     sections.push("RAW QUICKBOOKS DATA:");
-    sections.push(JSON.stringify(data, null, 2));
+    sections.push(JSON.stringify(data.rawQBOData || data, null, 2));
+    logger.info("Sending raw QBO API data to LLM for analysis");
 
     return sections.join("\n");
   }
@@ -1279,93 +990,6 @@ ${formattedData}`,
     // Check pillar data completeness
     if (data.pillarData?.chartIntegrity?.totals?.accounts === 0) {
       warnings.push("Chart of accounts data appears empty");
-    }
-
-    return {
-      isComplete: missingData.length === 0,
-      missingData,
-      warnings,
-    };
-  }
-
-  /**
-   * Formats five pillar raw data for LLM analysis - passes raw QBO data
-   */
-  private formatFivePillarDataForAnalysis(rawData: FivePillarRawData): string {
-    // Just pass the entire raw data object to the LLM
-    return (
-      "=== QUICKBOOKS ONLINE DATA FOR ANALYSIS ===\n\n" +
-      `Data Period: ${rawData.assessmentMetadata?.datePeriodAnalyzed?.startDate} to ${rawData.assessmentMetadata?.datePeriodAnalyzed?.endDate}\n\n` +
-      "INSTRUCTIONS FOR ANALYSIS:\n" +
-      "1. Calculate scores based on actual data quality and completeness\n" +
-      "2. Identify specific issues with exact dollar amounts and account names\n" +
-      "3. Provide actionable, QuickBooks-specific remediation steps\n" +
-      "4. Use business-friendly language in the executive summary\n" +
-      "5. Be specific about locations in QuickBooks (menu paths)\n\n" +
-      "RAW QUICKBOOKS DATA:\n" +
-      JSON.stringify(rawData, null, 2)
-    );
-  }
-
-  /**
-   * Validates that the five pillar raw data contains the minimum required data.
-   */
-  private validateFivePillarDataCompleteness(data: FivePillarRawData): {
-    isComplete: boolean;
-    missingData: string[];
-    warnings: string[];
-  } {
-    const missingData: string[] = [];
-    const warnings: string[] = [];
-
-    // Check data completeness flags from metadata
-    if (data.assessmentMetadata.dataCompleteness.missingReports.length > 0) {
-      data.assessmentMetadata.dataCompleteness.missingReports.forEach(
-        (report) => {
-          if (
-            report.includes("Chart of Accounts") ||
-            report.includes("Trial Balance")
-          ) {
-            missingData.push(report);
-          } else {
-            warnings.push(
-              `${report} data not available - may impact assessment accuracy`,
-            );
-          }
-        },
-      );
-    }
-
-    // Check pillar data completeness
-    if (!data.assessmentMetadata.dataCompleteness.reconciliationDataAvailable) {
-      warnings.push(
-        "Bank reconciliation data not available - reconciliation assessment will be limited",
-      );
-    }
-
-    if (!data.assessmentMetadata.dataCompleteness.chartOfAccountsAvailable) {
-      missingData.push("Chart of Accounts data is missing");
-    }
-
-    if (!data.assessmentMetadata.dataCompleteness.categorizationDataAvailable) {
-      warnings.push("Categorization analysis data not available");
-    }
-
-    if (!data.assessmentMetadata.dataCompleteness.controlAccountsAvailable) {
-      warnings.push("Control accounts data not available");
-    }
-
-    if (!data.assessmentMetadata.dataCompleteness.arApDataAvailable) {
-      warnings.push("A/R and A/P aging data not available");
-    }
-
-    // Check individual pillar data quality
-    if (data.reconciliation.totalBankAccounts === 0) {
-      warnings.push("No bank accounts found for reconciliation analysis");
-    }
-
-    if (data.chartOfAccounts.totalAccounts === 0) {
-      missingData.push("Chart of Accounts is empty");
     }
 
     return {

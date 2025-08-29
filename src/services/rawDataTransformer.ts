@@ -4,7 +4,7 @@
  */
 
 import { logger } from '../lib/logger';
-import { WebhookResponse, WebhookPillarData } from './qboPillarsWebhookService';
+import { WebhookResponse } from './qboPillarsWebhookService';
 
 export interface RawQBOData {
   chartOfAccounts?: any;
@@ -27,7 +27,7 @@ export class RawDataTransformer {
 
   /**
    * Pass through raw QuickBooks data without any transformation
-   * Just organize it into a structure with metadata
+   * Returns the webhook response with raw QBO data only
    */
   static transformToPillarFormat(rawData: RawQBOData): WebhookResponse {
     // Data should already be extracted from array if needed
@@ -35,153 +35,14 @@ export class RawDataTransformer {
     
     logger.info('Passing through raw QBO data without transformation');
 
-    // Extract actual values from raw data for UI display
-    const accounts = data.chartOfAccounts?.Account || [];
-    
-    // Log account types for debugging
-    logger.info(`Total accounts found: ${accounts.length}`);
-    
-    // Find AR and AP accounts from chart of accounts - match by AccountType exactly
-    const arAccount = accounts.find((acc: any) => 
-      acc.AccountType === 'Accounts Receivable'
-    );
-    const apAccount = accounts.find((acc: any) => 
-      acc.AccountType === 'Accounts Payable'
-    );
-    const obeAccount = accounts.find((acc: any) => 
-      acc.AccountSubType === 'OpeningBalanceEquity' || acc.Name?.includes('Opening Balance')
-    );
-    const udfAccount = accounts.find((acc: any) => 
-      acc.AccountSubType === 'UndepositedFunds' || acc.Name === 'Undeposited Funds'
-    );
-    
-    // Log what we found
-    logger.info('Account extraction results:', {
-      arFound: !!arAccount,
-      arBalance: arAccount?.CurrentBalance,
-      arId: arAccount?.Id,
-      apFound: !!apAccount,
-      apBalance: apAccount?.CurrentBalance,
-      apId: apAccount?.Id,
-      obeFound: !!obeAccount,
-      obeBalance: obeAccount?.CurrentBalance,
-      udfFound: !!udfAccount,
-      udfBalance: udfAccount?.CurrentBalance
-    });
-
-    // Extract aging data if available - note the lowercase 'rows'
-    const arAgingData = data.ar?.rows?.Row || [];
-    const apAgingData = data.ap?.rows?.Row || [];
-    
-    // Calculate aging buckets from raw data
-    const calculateAgingBuckets = (agingRows: any[]) => {
-      const buckets = {
-        current: 0,
-        d1_30: 0,
-        d31_60: 0,
-        d61_90: 0,
-        d90_plus: 0
-      };
-      
-      // Find the summary row with totals
-      const summaryRow = agingRows.find((row: any) => 
-        row.Summary?.ColData || (row.type === 'Section' && row.group === 'GrandTotal')
-      );
-      
-      if (summaryRow?.Summary?.ColData) {
-        // Extract from summary row - indexes: [0]=label, [1]=current, [2]=1-30, [3]=31-60, [4]=61-90, [5]=91+
-        const cols = summaryRow.Summary.ColData;
-        buckets.current = parseFloat(cols[1]?.value || '0') || 0;
-        buckets.d1_30 = parseFloat(cols[2]?.value || '0') || 0;
-        buckets.d31_60 = parseFloat(cols[3]?.value || '0') || 0;
-        buckets.d61_90 = parseFloat(cols[4]?.value || '0') || 0;
-        buckets.d90_plus = parseFloat(cols[5]?.value || '0') || 0;
-      }
-      
-      logger.info('Extracted aging buckets:', buckets);
-      
-      return buckets;
-    };
-
-    // Pass raw data AS-IS but ensure basic structure for UI compatibility
-    const pillarData: WebhookPillarData = {
-      reconciliation: {
-        rawData: data.txnList || {},
-        rawChartOfAccounts: data.chartOfAccounts || {},
-        clearedColumnFound: false,
-        totalRowsFound: 0,
-        totalTransactionsProcessed: 0,
-        totalAccountsFound: 0,
-        hasTransactionData: false,
-        byAccount: [],
-        variance: []
-      } as any,
-      chartIntegrity: {
-        rawData: data.chartOfAccounts || {},
-        source: 'raw',
-        totals: {
-          accounts: accounts.length
-        },
-        duplicates: {
-          name: [],
-          acctNum: []
-        },
-        missingDetail: [],
-        subAccountsMissingParent: []
-      } as any,
-      categorization: {
-        rawData: {
-          chartOfAccounts: data.chartOfAccounts || {},
-          txnList: data.txnList || {}
-        },
-        uncategorized: {
-          'Uncategorized Expense': { count: 0, amount: 0 },
-          'Uncategorized Income': { count: 0, amount: 0 },
-          'Uncategorized Asset': { count: 0, amount: 0 },
-          'Ask My Accountant': { count: 0, amount: 0 }
-        }
-      } as any,
-      controlAccounts: {
-        rawData: {
-          chartOfAccounts: data.chartOfAccounts || {},
-          journalEntries: data.journalEntries || {},
-          trialBalance: data.trialBal || {}
-        },
-        openingBalanceEquity: { 
-          balance: obeAccount?.CurrentBalance || 0, 
-          accountId: obeAccount?.Id || null 
-        },
-        undepositedFunds: { 
-          balance: udfAccount?.CurrentBalance || 0, 
-          accountId: udfAccount?.Id || null 
-        },
-        ar: { 
-          balance: arAccount?.CurrentBalance || 0, 
-          accountId: arAccount?.Id || null 
-        },
-        ap: { 
-          balance: apAccount?.CurrentBalance || 0, 
-          accountId: apAccount?.Id || null 
-        },
-        journalEntriesToARorAP: 0
-      } as any,
-      arApValidity: {
-        rawData: {
-          arAging: data.ar || {},
-          apAging: data.ap || {}
-        },
-        arAging: calculateAgingBuckets(arAgingData),
-        apAging: calculateAgingBuckets(apAgingData),
-        arTotal: arAccount?.CurrentBalance || 0,
-        apTotal: apAccount?.CurrentBalance || 0
-      } as any
-    };
+    // Return raw QBO data without any transformation
+    // No pillar computation - just raw data as received from QBO API
 
     // Simple metadata extraction without complex logic
     const meta = this.extractMetadata(data);
 
     return {
-      pillarData,
+      rawQBOData: data,
       meta
     };
   }

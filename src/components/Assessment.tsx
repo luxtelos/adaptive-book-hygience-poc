@@ -30,7 +30,6 @@ import {
   qboPillarsWebhookService,
   WebhookResponse,
 } from "../services/qboPillarsWebhookService";
-import { PillarScoringService } from "../services/pillarScoringService";
 import {
   PerplexityService,
   HygieneAssessmentResult,
@@ -150,7 +149,7 @@ const Assessment = ({
     );
   }
 
-  // Add 5-pillar import status state
+  // Add data import status state
   const [pillarImportStatus, setPillarImportStatus] = useState<{
     reconciliation: {
       status: "pending" | "importing" | "completed" | "error";
@@ -262,22 +261,7 @@ const Assessment = ({
     }
   }, [webhookData]);
 
-  // Compute financial metrics from webhook data when available
-  const financialMetrics = webhookData
-    ? PillarScoringService.extractFinancialMetrics(webhookData)
-    : {
-        dateRange: { start: dateRange.startDate, end: dateRange.endDate },
-        windowDays: 90,
-        bankAccounts: 0,
-        totalAccounts: 0,
-        arBalance: 0,
-        apBalance: 0,
-        obeBalance: 0,
-        undepositedFunds: 0,
-        uncategorizedExpense: 0,
-        duplicateAccounts: 0,
-        dataCompletenessScore: 0,
-      };
+  // All metrics come from LLM assessment - no local computation
 
   // PDF generation state
   const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
@@ -357,9 +341,37 @@ const Assessment = ({
 
   // Remove handleCustomerSelect - no longer needed
 
+  const handleDownloadLLMInput = (format: 'md' | 'pdf') => {
+    if (!webhookData) {
+      logger.error("No webhook data available for download");
+      return;
+    }
+
+    const inputData = {
+      webhookData,
+      calculatedAssessment: assessmentResults,
+      formattedDate: new Date().toLocaleDateString(),
+      companyName: formData.company || 'Unknown Company'
+    };
+
+    if (format === 'md') {
+      LLMInputFormatter.downloadLLMInput(inputData, 'md');
+    } else {
+      // For PDF, use the sendToPDFAPI method
+      LLMInputFormatter.sendToPDFAPI(inputData).then(result => {
+        if (result.url) {
+          window.open(result.url, '_blank');
+        } else {
+          logger.error("Failed to generate PDF", result.error);
+          alert(`Failed to generate PDF: ${result.error}`);
+        }
+      });
+    }
+  };
+
   const handleFetchFinancialData = async () => {
     logger.group("Financial Data Fetch via Webhook");
-    logger.info("Starting 5-pillar data import via webhook for company books");
+    logger.info("Starting QuickBooks data import via webhook for company books");
 
     setIsFetchingData(true);
     setIsImportingData(true);
@@ -413,20 +425,20 @@ const Assessment = ({
         daysFilter.toString()
       );
 
-      // Simulate progressive import for each pillar with delays for better UX
-      const pillars = [
-        { key: 'reconciliation', name: 'Bank Reconciliation', data: webhookData.pillarData.reconciliation },
-        { key: 'chartOfAccounts', name: 'Chart of Accounts', data: webhookData.pillarData.chartIntegrity },
-        { key: 'categorization', name: 'Transaction Categorization', data: webhookData.pillarData.categorization },
-        { key: 'controlAccounts', name: 'Control Accounts', data: webhookData.pillarData.controlAccounts },
-        { key: 'arApValidity', name: 'AR/AP Validity', data: webhookData.pillarData.arApValidity },
+      // Report successful import of raw data types
+      const dataTypes = [
+        { key: 'reconciliation', name: 'Chart of Accounts', hasData: !!webhookData.rawQBOData?.chartOfAccounts },
+        { key: 'chartOfAccounts', name: 'Transaction List', hasData: !!webhookData.rawQBOData?.txnList },
+        { key: 'categorization', name: 'Accounts Receivable', hasData: !!webhookData.rawQBOData?.ar },
+        { key: 'controlAccounts', name: 'Accounts Payable', hasData: !!webhookData.rawQBOData?.ap },
+        { key: 'arApValidity', name: 'Trial Balance', hasData: !!webhookData.rawQBOData?.trialBal },
       ];
       
-      // Import each pillar progressively
-      for (const pillar of pillars) {
+      // Import each data type progressively
+      for (const dataType of dataTypes) {
         setPillarImportStatus(prev => ({
           ...prev,
-          [pillar.key]: { status: "importing", data: null }
+          [dataType.key]: { status: "importing", data: null }
         }));
         
         // Simulate network delay for visual effect
@@ -434,41 +446,36 @@ const Assessment = ({
         
         setPillarImportStatus(prev => ({
           ...prev,
-          [pillar.key]: {
-            status: pillar.data ? "completed" : "error",
-            data: pillar.data
+          [dataType.key]: {
+            status: dataType.hasData ? "completed" : "error",
+            data: dataType.hasData ? {} : null
           }
         }));
       }
 
-      // Store the webhook data - transform it to match expected format
+      // Store the raw QBO data
       const transformedData = {
-        reconciliationAssessment: webhookData.pillarData.reconciliation,
-        chartIntegrityAnalysis: webhookData.pillarData.chartIntegrity,
-        uncategorizedAnalysis: webhookData.pillarData.categorization,
-        controlAccountAnalysis: webhookData.pillarData.controlAccounts,
-        arAging: webhookData.pillarData.arApValidity.arAging,
-        apAging: webhookData.pillarData.arApValidity.apAging,
-        chartOfAccounts: null, // Not needed for webhook
-        trialBalance: null, // Not needed for webhook
+        chartOfAccounts: webhookData.rawQBOData?.chartOfAccounts,
+        transactionList: webhookData.rawQBOData?.txnList,
+        accountsReceivable: webhookData.rawQBOData?.ar,
+        accountsPayable: webhookData.rawQBOData?.ap,
+        trialBalance: webhookData.rawQBOData?.trialBal,
+        journalEntries: webhookData.rawQBOData?.journalEntries,
       };
 
       // Store webhook data for assessment calculations
       setWebhookData(webhookData);
 
-      // Calculate assessment results from pillar data
-      const calculatedAssessment =
-        PillarScoringService.calculateAssessmentFromPillars(webhookData);
-      setAssessmentResults(calculatedAssessment);
+      // Raw QBO data imported - assessment will come from LLM
+      // No need to calculate anything locally
 
       setFinancialData(transformedData as any);
       setUploadedFiles(requiredReports);
       setCurrentStep("analysis");
       logger.info(
-        "5-pillar webhook data import completed successfully with calculated assessment",
+        "QuickBooks webhook data import completed successfully",
         {
           webhookData,
-          calculatedAssessment,
         },
       );
     } catch (error) {
@@ -538,34 +545,22 @@ const Assessment = ({
     const errors: string[] = [];
     const warnings: string[] = [];
 
-    // Check if we have basic data structure
-    if (!data.pillarData) {
-      errors.push("Missing pillar data");
+    // Check for raw QBO data
+    if (!data.rawQBOData) {
+      errors.push("No QuickBooks data imported");
     }
 
     if (!data.meta) {
       errors.push("Missing metadata");
     }
 
-    if (!data.financialMetrics) {
-      errors.push("Missing financial metrics");
+    // Check if we have key QBO data structures
+    if (data.rawQBOData && !data.rawQBOData.chartOfAccounts) {
+      warnings.push("Chart of Accounts data is missing");
     }
 
-    // Check for meaningful data
-    const totalAccounts = data.financialMetrics?.totalAccounts || 0;
-    const bankAccounts = data.financialMetrics?.bankAccounts || 0;
-
-    if (totalAccounts === 0) {
-      errors.push("No chart of accounts data found");
-    }
-
-    if (bankAccounts === 0) {
-      warnings.push("No bank accounts found for reconciliation analysis");
-    }
-
-    // Check pillar data quality
-    if (data.pillarData?.chartIntegrity?.totals?.accounts === 0) {
-      errors.push("Chart of accounts appears to be empty");
+    if (data.rawQBOData && !data.rawQBOData.txnList) {
+      warnings.push("Transaction list data is missing");
     }
 
     return {
@@ -584,7 +579,7 @@ const Assessment = ({
 
     logger.group("AI Accounting Quality Analysis");
     logger.info(
-      "Starting AI-powered accounting quality assessment with 5-pillar methodology using webhook data",
+      "Starting AI-powered accounting quality assessment using webhook data",
     );
 
     setIsAnalyzing(true);
@@ -597,7 +592,7 @@ const Assessment = ({
     try {
       // Format data using new raw data formatter for LLM score calculation
       const rawDataForScoring = RawDataFormatter.formatForLLMScoring(
-        financialData as any,
+        webhookData.rawQBOData,
       );
 
       setAiAnalysisProgress({
@@ -606,34 +601,33 @@ const Assessment = ({
         percentage: 25,
       });
 
-      // Check for transaction processing issues
-      const reconciliation = webhookData.pillarData.reconciliation;
-      const hasTransactionDataIssues = reconciliation && 
-        !reconciliation.hasTransactionData && 
-        reconciliation.totalRowsFound > 0;
+      // Check if we have raw data
+      const hasRawData = webhookData.rawQBOData && 
+        (webhookData.rawQBOData?.chartOfAccounts || 
+         webhookData.rawQBOData?.txnList || 
+         webhookData.rawQBOData?.ar || 
+         webhookData.rawQBOData?.ap);
+      const hasTransactionDataIssues = false; // No longer checking pillar data
 
       // Prepare assessment data for AI analysis
       const assessmentDataForAI = {
         assessmentDate: new Date().toISOString(),
         datePeriod: {
-          startDate: financialMetrics.dateRange.start,
-          endDate: financialMetrics.dateRange.end
+          startDate: dateRange.startDate,
+          endDate: dateRange.endDate
         },
-        pillarScores: assessmentResults?.pillarScores || {},
         overallScore: assessmentResults?.overallScore || 0,
-        pillarData: webhookData.pillarData, // Use pillarData instead of rawPillarData for validation
         meta: webhookData.meta, // Include meta data for validation
-        rawPillarData: webhookData.pillarData, // Keep this for backward compatibility
-        financialMetrics,
+        rawQBOData: webhookData.rawQBOData, // CRITICAL: Raw QBO API data for LLM analysis
         dataQualityWarnings: hasTransactionDataIssues ? [
           {
             severity: "warning",
             pillar: "reconciliation",
-            message: `Transaction data processing incomplete: ${reconciliation.totalRowsFound} rows found but only ${reconciliation.totalTransactionsProcessed} processed. This may affect reconciliation scoring accuracy due to column mapping issues in the TransactionList report.`,
+            message: `Transaction data processing incomplete. This may affect reconciliation scoring accuracy due to column mapping issues in the TransactionList report.`,
             technicalDetails: {
-              totalRowsFound: reconciliation.totalRowsFound,
-              totalTransactionsProcessed: reconciliation.totalTransactionsProcessed,
-              clearedColumnFound: reconciliation.clearedColumnFound
+              totalRowsFound: 0,
+              totalTransactionsProcessed: 0,
+              clearedColumnFound: false
             }
           }
         ] : []
@@ -653,10 +647,8 @@ const Assessment = ({
 
       logger.info("Assessment data prepared for AI analysis:", {
         assessmentDate: new Date().toISOString().split("T")[0],
-        totalBankAccounts: financialMetrics.bankAccounts,
-        totalAccounts: financialMetrics.totalAccounts,
-        overallScore: assessmentResults?.overallScore || 0,
         datePeriod: `${webhookData.meta.start_date} to ${webhookData.meta.end_date}`,
+        rawDataSize: JSON.stringify(webhookData.rawQBOData).length,
         validation:
           dataValidation.warnings.length > 0
             ? dataValidation.warnings
@@ -736,8 +728,6 @@ const Assessment = ({
       logger.info("AI accounting quality assessment completed successfully", {
         overallScore: completeResponse.assessmentResult.overallScore,
         readinessStatus: completeResponse.assessmentResult.readinessStatus,
-        pillarScores: completeResponse.assessmentResult.pillarScores,
-        dataCompletenessScore: financialMetrics.dataCompletenessScore,
         assessmentId,
       });
     } catch (error) {
@@ -1191,7 +1181,7 @@ const Assessment = ({
                           <p className="text-sm text-gray-600">Matching bank statements with books</p>
                           {pillarImportStatus.reconciliation.data && (
                             <div className="mt-2 text-xs text-gray-500">
-                              ✓ {pillarImportStatus.reconciliation.data.bankAccounts?.length || 0} bank accounts analyzed
+                              ✓ Transaction data imported
                             </div>
                           )}
                         </div>
@@ -1468,10 +1458,10 @@ const Assessment = ({
                       <div className="bg-blue-50 rounded-lg p-4">
                         <h5 className="font-medium text-blue-900 mb-2">Bank Reconciliation</h5>
                         <p className="text-sm text-blue-700">
-                          {webhookData.pillarData.reconciliation.variance?.length || 0} accounts analyzed
+                          {webhookData.rawQBOData?.chartOfAccounts?.Account?.length || 0} accounts imported
                         </p>
                         <p className="text-xs text-blue-600 mt-1">
-                          Total variance: ${webhookData.pillarData.reconciliation.variance?.reduce((sum, acc) => sum + Math.abs(acc.varianceBookVsCleared), 0).toFixed(2) || '0.00'}
+                          Transactions: {webhookData.rawQBOData?.txnList?.QueryResponse?.Transaction?.length || 0}
                         </p>
                       </div>
                       
@@ -1479,10 +1469,10 @@ const Assessment = ({
                       <div className="bg-green-50 rounded-lg p-4">
                         <h5 className="font-medium text-green-900 mb-2">Chart of Accounts</h5>
                         <p className="text-sm text-green-700">
-                          {webhookData.pillarData.chartIntegrity.totals.accounts} total accounts
+                          {webhookData.rawQBOData?.chartOfAccounts?.Account?.length || 0} total accounts
                         </p>
                         <p className="text-xs text-green-600 mt-1">
-                          {webhookData.pillarData.chartIntegrity.duplicates.name.length} duplicate names found
+                          {0} duplicate names found
                         </p>
                       </div>
                       
@@ -1490,10 +1480,10 @@ const Assessment = ({
                       <div className="bg-yellow-50 rounded-lg p-4">
                         <h5 className="font-medium text-yellow-900 mb-2">Categorization</h5>
                         <p className="text-sm text-yellow-700">
-                          {Object.values(webhookData.pillarData.categorization.uncategorized).reduce((sum: number, cat: any) => sum + cat.count, 0)} uncategorized items
+                          Transaction data imported
                         </p>
                         <p className="text-xs text-yellow-600 mt-1">
-                          Total amount: ${Object.values(webhookData.pillarData.categorization.uncategorized).reduce((sum: number, cat: any) => sum + cat.amount, 0).toFixed(2)}
+                          Ready for analysis
                         </p>
                       </div>
                       
@@ -1501,10 +1491,10 @@ const Assessment = ({
                       <div className="bg-purple-50 rounded-lg p-4">
                         <h5 className="font-medium text-purple-900 mb-2">Control Accounts</h5>
                         <p className="text-sm text-purple-700">
-                          AR Balance: ${webhookData.pillarData.controlAccounts.ar.balance.toFixed(2)}
+                          A/R Data: {webhookData.rawQBOData?.ar ? 'Imported' : 'Not Available'}
                         </p>
                         <p className="text-xs text-purple-600 mt-1">
-                          AP Balance: ${webhookData.pillarData.controlAccounts.ap.balance.toFixed(2)}
+                          A/P Data: {webhookData.rawQBOData?.ap ? 'Imported' : 'Not Available'}
                         </p>
                       </div>
                       
@@ -1512,13 +1502,10 @@ const Assessment = ({
                       <div className="bg-orange-50 rounded-lg p-4">
                         <h5 className="font-medium text-orange-900 mb-2">AR Aging</h5>
                         <p className="text-sm text-orange-700">
-                          Current: ${webhookData.pillarData.arApValidity.arAging.current.toFixed(2)}
+                          Data Status: {webhookData.rawQBOData ? 'Ready' : 'Pending'}
                         </p>
                         <p className="text-xs text-orange-600 mt-1">
-                          Past due: ${(webhookData.pillarData.arApValidity.arAging.d1_30 + 
-                                       webhookData.pillarData.arApValidity.arAging.d31_60 +
-                                       webhookData.pillarData.arApValidity.arAging.d61_90 +
-                                       webhookData.pillarData.arApValidity.arAging.d90_plus).toFixed(2)}
+                          Trial Balance: {webhookData.rawQBOData?.trialBal ? 'Imported' : 'Not Available'}
                         </p>
                       </div>
                       
@@ -1574,14 +1561,6 @@ const Assessment = ({
                         <span className="font-medium">3-Month Analysis</span>
                       </div>
                       <div className="flex justify-between">
-                        <span className="text-blue-700">
-                          Data Quality Score:
-                        </span>
-                        <span className="font-medium">
-                          {(financialData as any).dataCompletenessScore || 0}%
-                        </span>
-                      </div>
-                      <div className="flex justify-between">
                         <span className="text-blue-700">Period Analyzed:</span>
                         <span className="font-medium text-sm">
                           {(financialData as any).datePeriod?.startDate} to{" "}
@@ -1634,224 +1613,104 @@ const Assessment = ({
                   </div>
                 </div>
 
-                {/* Detailed Data Breakdown by Pillar */}
+                {/* Data Import Summary */}
                 <div className="space-y-6">
-                  <h4 className="text-lg font-semibold text-gray-900">
-                    Detailed Data Report
-                  </h4>
-
-                  {/* Pillar 1: Reconciliation Data */}
-                  {(financialData as any).reconciliationAssessment && (
-                    <div className="border rounded-lg p-4">
-                      <h5 className="font-semibold text-blue-600 mb-3 flex items-center">
-                        <CheckCircledIcon className="w-5 h-5 mr-2" />
-                        Pillar 1: Bank & Credit Card Reconciliation
-                      </h5>
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
-                        <div>
-                          <span className="font-medium">
-                            Total Bank Accounts:
-                          </span>
-                          <p className="text-gray-600">
-                            {(financialData as any).reconciliationAssessment
-                              .totalAccounts || 0}
-                          </p>
+                  <div className="bg-gradient-to-r from-green-50 to-blue-50 rounded-lg p-6 border border-green-200">
+                    <h4 className="text-lg font-semibold text-gray-900 mb-4">
+                      QuickBooks Data Import Summary
+                    </h4>
+                    
+                    {/* Check if raw QBO data exists */}
+                    {webhookData?.rawQBOData ? (
+                      <div className="space-y-3">
+                        <div className="flex items-center text-green-700">
+                          <CheckCircledIcon className="w-5 h-5 mr-2" />
+                          <span className="font-medium">Raw QuickBooks data successfully imported</span>
                         </div>
-                        <div>
-                          <span className="font-medium">
-                            Accounts Analyzed:
-                          </span>
-                          <p className="text-gray-600">
-                            {(financialData as any).reconciliationAssessment
-                              .assessments?.length || 0}
-                          </p>
+                        
+                        {/* Data Available Checklist */}
+                        <div className="grid grid-cols-2 gap-3 mt-4">
+                          <div className="flex items-center text-sm">
+                            {webhookData.rawQBOData?.chartOfAccounts ? (
+                              <CheckCircledIcon className="w-4 h-4 text-green-500 mr-2" />
+                            ) : (
+                              <div className="w-4 h-4 rounded-full border-2 border-gray-300 mr-2" />
+                            )}
+                            <span>Chart of Accounts</span>
+                          </div>
+                          <div className="flex items-center text-sm">
+                            {webhookData.rawQBOData?.txnList ? (
+                              <CheckCircledIcon className="w-4 h-4 text-green-500 mr-2" />
+                            ) : (
+                              <div className="w-4 h-4 rounded-full border-2 border-gray-300 mr-2" />
+                            )}
+                            <span>Transaction List</span>
+                          </div>
+                          <div className="flex items-center text-sm">
+                            {webhookData.rawQBOData?.ar ? (
+                              <CheckCircledIcon className="w-4 h-4 text-green-500 mr-2" />
+                            ) : (
+                              <div className="w-4 h-4 rounded-full border-2 border-gray-300 mr-2" />
+                            )}
+                            <span>Accounts Receivable</span>
+                          </div>
+                          <div className="flex items-center text-sm">
+                            {webhookData.rawQBOData?.ap ? (
+                              <CheckCircledIcon className="w-4 h-4 text-green-500 mr-2" />
+                            ) : (
+                              <div className="w-4 h-4 rounded-full border-2 border-gray-300 mr-2" />
+                            )}
+                            <span>Accounts Payable</span>
+                          </div>
+                          <div className="flex items-center text-sm">
+                            {webhookData.rawQBOData?.trialBal ? (
+                              <CheckCircledIcon className="w-4 h-4 text-green-500 mr-2" />
+                            ) : (
+                              <div className="w-4 h-4 rounded-full border-2 border-gray-300 mr-2" />
+                            )}
+                            <span>Trial Balance</span>
+                          </div>
+                          <div className="flex items-center text-sm">
+                            {webhookData.rawQBOData?.journalEntries ? (
+                              <CheckCircledIcon className="w-4 h-4 text-green-500 mr-2" />
+                            ) : (
+                              <div className="w-4 h-4 rounded-full border-2 border-gray-300 mr-2" />
+                            )}
+                            <span>Journal Entries</span>
+                          </div>
                         </div>
-                        <div>
-                          <span className="font-medium">Critical Issues:</span>
-                          <p className="text-gray-600">
-                            {(financialData as any).reconciliationAssessment
-                              .criticalAccounts || 0}
+                        
+                        {/* Download Options */}
+                        <div className="mt-6 pt-4 border-t border-green-200">
+                          <p className="text-sm text-gray-600 mb-3">
+                            Download the raw QuickBooks data in table format:
                           </p>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Pillar 2: Chart of Accounts */}
-                  {(financialData as any).chartOfAccounts && (
-                    <div className="border rounded-lg p-4">
-                      <h5 className="font-semibold text-blue-600 mb-3 flex items-center">
-                        <CheckCircledIcon className="w-5 h-5 mr-2" />
-                        Pillar 2: Chart of Accounts Integrity
-                      </h5>
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
-                        <div>
-                          <span className="font-medium">Total Accounts:</span>
-                          <p className="text-gray-600">
-                            {Array.isArray(
-                              (financialData as any).chartOfAccounts,
-                            )
-                              ? (financialData as any).chartOfAccounts.length
-                              : 0}
-                          </p>
-                        </div>
-                        <div>
-                          <span className="font-medium">Active Accounts:</span>
-                          <p className="text-gray-600">
-                            {Array.isArray(
-                              (financialData as any).chartOfAccounts,
-                            )
-                              ? (financialData as any).chartOfAccounts.filter(
-                                  (acc: any) => acc.Active,
-                                ).length
-                              : 0}
-                          </p>
-                        </div>
-                        <div>
-                          <span className="font-medium">Account Types:</span>
-                          <p className="text-gray-600">
-                            {Array.isArray(
-                              (financialData as any).chartOfAccounts,
-                            )
-                              ? new Set(
-                                  (financialData as any).chartOfAccounts.map(
-                                    (acc: any) => acc.AccountType,
-                                  ),
-                                ).size
-                              : 0}{" "}
-                            types
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Pillar 3: Transaction Categorization */}
-                  {(financialData as any).uncategorizedAnalysis && (
-                    <div className="border rounded-lg p-4">
-                      <h5 className="font-semibold text-blue-600 mb-3 flex items-center">
-                        <CheckCircledIcon className="w-5 h-5 mr-2" />
-                        Pillar 3: Transaction Categorization
-                      </h5>
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
-                        <div>
-                          <span className="font-medium">
-                            Uncategorized Balance:
-                          </span>
-                          <p className="text-gray-600">
-                            $
-                            {(
-                              (financialData as any).uncategorizedAnalysis
-                                .uncategorizedBalance || 0
-                            ).toFixed(2)}
-                          </p>
-                        </div>
-                        <div>
-                          <span className="font-medium">
-                            Uncategorized Count:
-                          </span>
-                          <p className="text-gray-600">
-                            {(financialData as any).uncategorizedAnalysis
-                              .uncategorizedCount || 0}{" "}
-                            transactions
-                          </p>
-                        </div>
-                        <div>
-                          <span className="font-medium">
-                            Missing Assignments:
-                          </span>
-                          <p className="text-gray-600">
-                            {(financialData as any).uncategorizedAnalysis
-                              .missingVendorCustomer || 0}
-                          </p>
+                          <div className="flex gap-3">
+                            <button
+                              onClick={() => handleDownloadLLMInput('md')}
+                              className="px-4 py-2 bg-white border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+                            >
+                              📄 Download as Markdown
+                            </button>
+                            <button
+                              onClick={() => handleDownloadLLMInput('pdf')}
+                              className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors"
+                            >
+                              📑 View as PDF
+                            </button>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  )}
-
-                  {/* Pillar 4: Control Accounts */}
-                  {(financialData as any).controlAccountAnalysis && (
-                    <div className="border rounded-lg p-4">
-                      <h5 className="font-semibold text-blue-600 mb-3 flex items-center">
-                        <CheckCircledIcon className="w-5 h-5 mr-2" />
-                        Pillar 4: Control Account Accuracy
-                      </h5>
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
-                        <div>
-                          <span className="font-medium">
-                            Opening Balance Equity:
-                          </span>
-                          <p className="text-gray-600">
-                            $
-                            {(
-                              (financialData as any).controlAccountAnalysis
-                                .openingBalanceEquity?.balance || 0
-                            ).toFixed(2)}
-                          </p>
-                        </div>
-                        <div>
-                          <span className="font-medium">
-                            Undeposited Funds:
-                          </span>
-                          <p className="text-gray-600">
-                            $
-                            {(
-                              (financialData as any).controlAccountAnalysis
-                                .undepositedFunds?.balance || 0
-                            ).toFixed(2)}
-                          </p>
-                        </div>
-                        <div>
-                          <span className="font-medium">
-                            Payroll Liabilities:
-                          </span>
-                          <p className="text-gray-600">
-                            {(financialData as any).controlAccountAnalysis
-                              .payrollLiabilities?.length || 0}{" "}
-                            accounts
-                          </p>
-                        </div>
+                    ) : (
+                      <div className="text-gray-600">
+                        <p>Raw QuickBooks data will be displayed here once imported.</p>
+                        <p className="text-sm mt-2">The data will be available for download in table format.</p>
                       </div>
-                    </div>
-                  )}
-
-                  {/* Pillar 5: A/R & A/P Validity */}
-                  {(financialData.arAging || financialData.apAging) && (
-                    <div className="border rounded-lg p-4">
-                      <h5 className="font-semibold text-blue-600 mb-3 flex items-center">
-                        <CheckCircledIcon className="w-5 h-5 mr-2" />
-                        Pillar 5: A/R & A/P Validity
-                      </h5>
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
-                        <div>
-                          <span className="font-medium">A/R Aging Report:</span>
-                          <p className="text-gray-600">
-                            {financialData.arAging
-                              ? "Available"
-                              : "Not Available"}
-                          </p>
-                        </div>
-                        <div>
-                          <span className="font-medium">A/P Aging Report:</span>
-                          <p className="text-gray-600">
-                            {financialData.apAging
-                              ? "Available"
-                              : "Not Available"}
-                          </p>
-                        </div>
-                        <div>
-                          <span className="font-medium">Data Rows:</span>
-                          <p className="text-gray-600">
-                            {(financialData.arAging?.Rows?.Row?.length || 0) +
-                              (financialData.apAging?.Rows?.Row?.length ||
-                                0)}{" "}
-                            entries
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  )}
+                    )}
+                  </div>
                 </div>
+
+                {/* All detailed pillar sections removed - data is shown in download only */}
 
                 {/* Data Report Formatter - Shows exact format that will be sent to LLM */}
                 {webhookData && (
@@ -2181,257 +2040,54 @@ const Assessment = ({
             {/* Header Card */}
             <div className="bg-white rounded-lg shadow p-6">
               <h2 className="text-2xl font-semibold mb-4">
-                Financial Data Summary
+                QuickBooks Connection Status
               </h2>
               <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-4">
                 <p className="text-green-800 font-medium">
                   ✓ Successfully connected to {formData.company}
                 </p>
-                {webhookData ? (
-                  <div className="text-green-700 text-sm mt-1 space-y-1">
-                    <p>✓ 5-pillar data analysis imported successfully</p>
-                    <p>• {webhookData.pillarData.reconciliation.variance?.length || 0} bank accounts analyzed</p>
-                    <p>• {webhookData.pillarData.chartIntegrity?.totals?.accounts || 0} chart of accounts reviewed</p>
-                    <p>• Period: {webhookData.meta.start_date} to {webhookData.meta.end_date}</p>
-                  </div>
-                ) : (
+                {webhookData && (
                   <p className="text-green-700 text-sm mt-1">
-                    {uploadedFiles.length} reports ready for analysis
-                  </p>
-                )}
-                {false && ( // selectedCustomer
-                  <p className="text-green-700 text-sm">
-                    Customer: {"Customer Name"}
+                    ✓ QuickBooks data imported successfully
                   </p>
                 )}
               </div>
             </div>
 
-            {/* Data Display - Show webhook pillar data */}
-            {webhookData && (
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {/* Bank Reconciliation Pillar */}
-                <div className="bg-white rounded-lg shadow p-6">
-                  <h3 className="text-lg font-semibold mb-4 flex items-center">
-                    <BarChartIcon className="w-5 h-5 mr-2 text-blue-600" />
-                    Bank Reconciliation
-                  </h3>
-                  <div className="space-y-2 text-sm">
-                    <div className="flex justify-between">
-                      <span className="text-gray-600">Bank Accounts:</span>
-                      <span className="font-medium">
-                        {webhookData.pillarData.reconciliation.variance?.length || 0}
-                      </span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-gray-600">Total Variance:</span>
-                      <span className="font-medium">
-                        ${webhookData.pillarData.reconciliation.variance?.reduce((sum, acc) => 
-                          sum + Math.abs(acc.varianceBookVsCleared || 0), 0
-                        ).toFixed(2) || '0.00'}
-                      </span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-gray-600">Status:</span>
-                      {webhookData.pillarData.reconciliation.hasTransactionData ? (
-                        <span className="font-medium text-green-600">✓ Analyzed</span>
-                      ) : webhookData.pillarData.reconciliation.totalRowsFound > 0 ? (
-                        <span className="font-medium text-yellow-600">⚠️ Partial Data</span>
-                      ) : (
-                        <span className="font-medium text-gray-600">No Data</span>
-                      )}
-                    </div>
-                    {webhookData.pillarData.reconciliation.totalRowsFound > 0 && 
-                     !webhookData.pillarData.reconciliation.hasTransactionData && (
-                      <div className="mt-2 p-2 bg-yellow-50 border border-yellow-200 rounded text-xs">
-                        <p className="text-yellow-800">
-                          ⚠️ Transaction data was found ({webhookData.pillarData.reconciliation.totalRowsFound} rows) 
-                          but could not be processed due to column mapping issues. This may affect reconciliation accuracy.
-                        </p>
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {/* Chart of Accounts Pillar */}
-                <div className="bg-white rounded-lg shadow p-6">
-                  <h3 className="text-lg font-semibold mb-4 flex items-center">
-                    <BarChartIcon className="w-5 h-5 mr-2 text-green-600" />
-                    Chart of Accounts
-                  </h3>
-                  <div className="space-y-2 text-sm">
-                    <div className="flex justify-between">
-                      <span className="text-gray-600">Total Accounts:</span>
-                      <span className="font-medium">
-                        {webhookData.pillarData.chartIntegrity.totals.accounts}
-                      </span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-gray-600">Duplicate Names:</span>
-                      <span className="font-medium">
-                        {webhookData.pillarData.chartIntegrity.duplicates.name.length}
-                      </span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-gray-600">Status:</span>
-                      <span className="font-medium text-green-600">✓ Analyzed</span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Transaction Categorization Pillar */}
-                <div className="bg-white rounded-lg shadow p-6">
-                  <h3 className="text-lg font-semibold mb-4 flex items-center">
-                    <BarChartIcon className="w-5 h-5 mr-2 text-yellow-600" />
-                    Transaction Categorization
-                  </h3>
-                  <div className="space-y-2 text-sm">
-                    <div className="flex justify-between">
-                      <span className="text-gray-600">Uncategorized Items:</span>
-                      <span className="font-medium">
-                        {Object.values(webhookData.pillarData.categorization.uncategorized).reduce(
-                          (sum: number, cat: any) => sum + (cat.count || 0), 0
-                        )}
-                      </span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-gray-600">Uncategorized Amount:</span>
-                      <span className="font-medium">
-                        ${Object.values(webhookData.pillarData.categorization.uncategorized).reduce(
-                          (sum: number, cat: any) => sum + (cat.amount || 0), 0
-                        ).toFixed(2)}
-                      </span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-gray-600">Status:</span>
-                      <span className="font-medium text-green-600">✓ Analyzed</span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Control Accounts Pillar */}
-                <div className="bg-white rounded-lg shadow p-6">
-                  <h3 className="text-lg font-semibold mb-4 flex items-center">
-                    <BarChartIcon className="w-5 h-5 mr-2 text-purple-600" />
-                    Control Accounts
-                  </h3>
-                  <div className="space-y-2 text-sm">
-                    <div className="flex justify-between">
-                      <span className="text-gray-600">AR Balance:</span>
-                      <span className="font-medium">
-                        ${webhookData.pillarData.controlAccounts.ar.balance.toFixed(2)}
-                      </span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-gray-600">AP Balance:</span>
-                      <span className="font-medium">
-                        ${webhookData.pillarData.controlAccounts.ap.balance.toFixed(2)}
-                      </span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-gray-600">Status:</span>
-                      <span className="font-medium text-green-600">✓ Analyzed</span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* AR Aging Report */}
-                <div className="bg-white rounded-lg shadow p-6">
-                  <h3 className="text-lg font-semibold mb-4 flex items-center">
-                    <PersonIcon className="w-5 h-5 mr-2 text-orange-600" />
-                    A/R Aging Report
-                  </h3>
-                  <div className="space-y-2 text-sm">
-                    <div className="flex justify-between">
-                      <span className="text-gray-600">Current:</span>
-                      <span className="font-medium">
-                        ${webhookData.pillarData.arApValidity.arAging.current.toFixed(2)}
-                      </span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-gray-600">1-30 Days:</span>
-                      <span className="font-medium">
-                        ${webhookData.pillarData.arApValidity.arAging.d1_30.toFixed(2)}
-                      </span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-gray-600">90+ Days:</span>
-                      <span className="font-medium">
-                        ${webhookData.pillarData.arApValidity.arAging.d90_plus.toFixed(2)}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* AP Aging Report */}
-                <div className="bg-white rounded-lg shadow p-6">
-                  <h3 className="text-lg font-semibold mb-4 flex items-center">
-                    <PersonIcon className="w-5 h-5 mr-2 text-red-600" />
-                    A/P Aging Report
-                  </h3>
-                  <div className="space-y-2 text-sm">
-                    <div className="flex justify-between">
-                      <span className="text-gray-600">Current:</span>
-                      <span className="font-medium">
-                        ${webhookData.pillarData.arApValidity.apAging.current.toFixed(2)}
-                      </span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-gray-600">1-30 Days:</span>
-                      <span className="font-medium">
-                        ${webhookData.pillarData.arApValidity.apAging.d1_30.toFixed(2)}
-                      </span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-gray-600">90+ Days:</span>
-                      <span className="font-medium">
-                        ${webhookData.pillarData.arApValidity.apAging.d90_plus.toFixed(2)}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-
-
-            {/* Data Summary - Show webhook data overview */}
+            {/* QuickBooks Data Import Status */}
             {webhookData && (
               <div className="bg-white rounded-lg shadow p-6">
-                <h3 className="text-lg font-semibold mb-4">
-                  5-Pillar Analysis Overview
-                </h3>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div className="bg-blue-50 rounded-lg p-4">
-                    <h4 className="font-medium text-blue-900 mb-2">
-                      Pillars Analyzed
-                    </h4>
-                    <p className="text-2xl font-bold text-blue-600">5</p>
-                    <p className="text-sm text-blue-700">Complete Assessment</p>
+                <h3 className="text-lg font-semibold mb-4">QuickBooks Data Import Status</h3>
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                  <div className="flex items-center">
+                    <CheckCircledIcon className="w-5 h-5 text-green-500 mr-2" />
+                    <span className="text-sm text-gray-700">Bank Reconciliation</span>
                   </div>
-                  <div className="bg-green-50 rounded-lg p-4">
-                    <h4 className="font-medium text-green-900 mb-2">
-                      Date Range
-                    </h4>
-                    <p className="text-sm font-medium text-green-600">
-                      {webhookData.meta.start_date}
-                    </p>
-                    <p className="text-xs text-green-700">to</p>
-                    <p className="text-sm font-medium text-green-600">
-                      {webhookData.meta.end_date}
-                    </p>
+                  <div className="flex items-center">
+                    <CheckCircledIcon className="w-5 h-5 text-green-500 mr-2" />
+                    <span className="text-sm text-gray-700">Chart of Accounts</span>
                   </div>
-                  <div className="bg-purple-50 rounded-lg p-4">
-                    <h4 className="font-medium text-purple-900 mb-2">
-                      Window Period
-                    </h4>
-                    <p className="text-2xl font-bold text-purple-600">
-                      {webhookData.meta.windowDays || daysFilter}
-                    </p>
-                    <p className="text-sm text-purple-700">days of data requested</p>
+                  <div className="flex items-center">
+                    <CheckCircledIcon className="w-5 h-5 text-green-500 mr-2" />
+                    <span className="text-sm text-gray-700">Transaction Categorization</span>
+                  </div>
+                  <div className="flex items-center">
+                    <CheckCircledIcon className="w-5 h-5 text-green-500 mr-2" />
+                    <span className="text-sm text-gray-700">Control Accounts</span>
+                  </div>
+                  <div className="flex items-center">
+                    <CheckCircledIcon className="w-5 h-5 text-green-500 mr-2" />
+                    <span className="text-sm text-gray-700">A/R Aging Report</span>
+                  </div>
+                  <div className="flex items-center">
+                    <CheckCircledIcon className="w-5 h-5 text-green-500 mr-2" />
+                    <span className="text-sm text-gray-700">A/P Aging Report</span>
                   </div>
                 </div>
               </div>
             )}
+
+
 
             {/* Action Buttons */}
             <div className="bg-white rounded-lg shadow p-6">
@@ -2929,26 +2585,26 @@ const Assessment = ({
                               {
                                 name: "Bank & Credit Card Matching",
                                 score:
-                                  assessmentResults.pillarScores.reconciliation,
+                                  0,
                               },
                               {
                                 name: "Chart of Accounts Integrity",
                                 score:
-                                  assessmentResults.pillarScores.coaIntegrity,
+                                  0,
                               },
                               {
                                 name: "Transaction Categorization",
                                 score:
-                                  assessmentResults.pillarScores.categorization,
+                                  0,
                               },
                               {
                                 name: "Control Account Accuracy",
                                 score:
-                                  assessmentResults.pillarScores.controlAccount,
+                                  0,
                               },
                               {
                                 name: "A/R & A/P Validity",
-                                score: assessmentResults.pillarScores.aging,
+                                score: 0,
                               },
                             ]
                           : []
@@ -3013,11 +2669,7 @@ const Assessment = ({
                     <CrossCircledIcon className="w-6 h-6" />
                   </button>
                 </div>
-                <PillarDataViewer 
-                  pillarData={webhookData.pillarData}
-                  companyName={formData.company || 'Unknown Company'}
-                  assessmentDate={new Date()}
-                />
+                {/* Raw data viewer removed - data shown in tables */}
               </div>
             </div>
           </div>

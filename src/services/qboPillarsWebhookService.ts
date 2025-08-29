@@ -34,10 +34,10 @@ export interface RawWebhookResponse {
 }
 
 /**
- * Processed webhook response with guaranteed pillar data
+ * Webhook response with ONLY raw QBO data - no computed pillars
  */
 export interface WebhookResponse {
-  pillarData: WebhookPillarData;
+  rawQBOData: RawQBOData; // ONLY raw QBO API data
   meta: {
     realmId: string;
     start_date: string;
@@ -190,14 +190,14 @@ export async function fetchAllPillarsData(
       throw new Error('QuickBooks authentication required');
     }
 
-    // Simulate progress for UI consistency
+    // Report import progress for UI
     if (onProgress) {
-      // Start all pillars as importing
-      onProgress('reconciliation', 'importing');
-      onProgress('chartIntegrity', 'importing');
-      onProgress('categorization', 'importing');
-      onProgress('controlAccounts', 'importing');
-      onProgress('arApValidity', 'importing');
+      // Start all data types as importing
+      onProgress('chartOfAccounts', 'importing');
+      onProgress('transactionList', 'importing');
+      onProgress('accountsReceivable', 'importing');
+      onProgress('accountsPayable', 'importing');
+      onProgress('trialBalance', 'importing');
     }
 
     // Build webhook URL with parameters
@@ -267,18 +267,17 @@ export async function fetchAllPillarsData(
       logger.info('Merged array response into single object');
     }
     
-    // Check if it's raw format (has chartOfAccounts at top level) or pillar format (has pillarData)
-    if (processedData.chartOfAccounts || processedData.txnList || processedData.ar || processedData.ap) {
-      logger.info('Detected raw QuickBooks data format, organizing into 5 pillars (no transformation)');
-      webhookData = RawDataTransformer.transformToPillarFormat(processedData as RawQBOData);
-    } else if (processedData.pillarData) {
-      logger.info('Using existing pillar format data');
-      webhookData = processedData;
-    } else {
-      // Fallback - treat as raw data
-      logger.info('Unknown format, treating as raw QuickBooks data');
-      webhookData = RawDataTransformer.transformToPillarFormat(processedData as RawQBOData);
-    }
+    // ONLY use raw QBO data - no pillar transformation
+    logger.info('Using raw QuickBooks data without any transformation');
+    webhookData = {
+      rawQBOData: processedData as RawQBOData,
+      meta: processedData.meta || {
+        realmId: tokens.realm_id,
+        start_date: '',
+        end_date: '',
+        windowDays: parseInt(days || '30')
+      }
+    };
     
     // Log and verify windowDays matches requested days
     if (webhookData?.meta?.windowDays) {
@@ -291,73 +290,30 @@ export async function fetchAllPillarsData(
       }
     }
     
-    console.log('🔍 Processed webhook data:', JSON.stringify(webhookData, null, 2));
+    console.log('🔍 Raw webhook data received:', JSON.stringify(webhookData, null, 2));
     
-    // Validate that we have pillar data after processing
-    if (!webhookData?.pillarData) {
-      console.error('❌ No pillar data available after processing');
-      throw new Error('Failed to process webhook data into pillar format');
-    }
-
-    // Check for transaction data processing issues
-    const reconciliation = webhookData.pillarData.reconciliation;
-    if (reconciliation && !reconciliation.hasTransactionData && reconciliation.totalRowsFound > 0) {
-      console.warn('⚠️ TransactionList data was found but not processed properly', {
-        totalRowsFound: reconciliation.totalRowsFound,
-        totalTransactionsProcessed: reconciliation.totalTransactionsProcessed,
-        clearedColumnFound: reconciliation.clearedColumnFound
-      });
-      
-      // Still proceed but log the issue for monitoring
-      console.warn('⚠️ This may affect reconciliation pillar accuracy');
+    // Validate that we have raw QBO data
+    if (!webhookData?.rawQBOData) {
+      console.error('❌ No raw QBO data available');
+      throw new Error('Failed to receive raw QBO data from webhook');
     }
     
-    // Log pillar data details for debugging
-    const pillarData = webhookData.pillarData;
-    console.log('🎯 RAW QBO DATA IN 5 PILLARS:', {
-      dataFlow: {
-        step1: 'Raw QBO data received from webhook',
-        step2: 'Organized into 5 pillars (NO transformation)',
-        step3: 'Data displayed as received from QuickBooks'
-      },
-      reconciliation: {
-        variance: pillarData.reconciliation?.variance?.length || 0,
-        byAccount: pillarData.reconciliation?.byAccount?.length || 0,
-        hasData: pillarData.reconciliation?.hasTransactionData || false
-      },
-      chartIntegrity: {
-        totalAccounts: pillarData.chartIntegrity?.totals?.accounts || 0,
-        duplicates: pillarData.chartIntegrity?.duplicates?.name?.length || 0
-      },
-      categorization: {
-        uncategorizedExpense: pillarData.categorization?.uncategorized?.['Uncategorized Expense']?.amount || 0,
-        uncategorizedIncome: pillarData.categorization?.uncategorized?.['Uncategorized Income']?.amount || 0,
-        askMyAccountant: pillarData.categorization?.uncategorized?.['Ask My Accountant']?.amount || 0
-      },
-      controlAccounts: {
-        ar: {
-          balance: pillarData.controlAccounts?.ar?.balance || 0
-        },
-        ap: {
-          balance: pillarData.controlAccounts?.ap?.balance || 0
-        },
-        openingBalance: pillarData.controlAccounts?.openingBalanceEquity?.balance || 0,
-        undepositedFunds: pillarData.controlAccounts?.undepositedFunds?.balance || 0
-      },
-      arApAging: {
-        arTotal: pillarData.arApValidity?.arTotal || 0,
-        apTotal: pillarData.arApValidity?.apTotal || 0
-      }
+    // Log raw QBO data types received
+    console.log('🎯 RAW QBO DATA RECEIVED:', {
+      chartOfAccounts: !!webhookData.rawQBOData.chartOfAccounts,
+      transactionList: !!webhookData.rawQBOData.txnList,
+      accountsReceivable: !!webhookData.rawQBOData.ar,
+      accountsPayable: !!webhookData.rawQBOData.ap,
+      trialBalance: !!webhookData.rawQBOData.trialBal,
+      journalEntries: !!webhookData.rawQBOData.journalEntries
     });
 
-    // Simulate staggered completion for better UX
+    // Report import completion for UI
     if (onProgress) {
-      const pillars = ['reconciliation', 'chartIntegrity', 'categorization', 'controlAccounts', 'arApValidity'];
-      for (let i = 0; i < pillars.length; i++) {
-        setTimeout(() => {
-          onProgress(pillars[i], 'completed');
-        }, i * 200); // Stagger by 200ms
-      }
+      const dataTypes = ['chartOfAccounts', 'transactionList', 'accountsReceivable', 'accountsPayable', 'trialBalance'];
+      dataTypes.forEach((dataType) => {
+        onProgress(dataType, 'completed');
+      });
     }
 
     return webhookData;

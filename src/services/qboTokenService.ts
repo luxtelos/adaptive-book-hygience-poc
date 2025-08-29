@@ -427,9 +427,9 @@ export class QBOTokenService {
         try {
           return await this.refreshAccessToken(clerkUserId);
         } catch (refreshError: any) {
-          // If refresh fails on expired tokens, clear them for fresh OAuth
-          logger.error('Failed to refresh expired tokens, clearing for re-authentication', refreshError);
-          await this.clearTokens(clerkUserId);
+          // If refresh fails on expired tokens, revoke and clear them for fresh OAuth
+          logger.error('Failed to refresh expired tokens, revoking and clearing for re-authentication', refreshError);
+          await this.revokeTokens(clerkUserId);
           return false;
         }
       }
@@ -552,9 +552,9 @@ export class QBOTokenService {
           logger.error('Network error during token refresh', error);
         }
         
-        // Treat timeout/network errors as invalid grant - clear tokens and require re-auth
-        logger.info('Clearing tokens due to refresh failure, re-authentication required');
-        await this.deactivateExistingTokens(clerkUserId);
+        // Treat timeout/network errors as invalid grant - revoke tokens and require re-auth
+        logger.info('Revoking tokens due to refresh failure, re-authentication required');
+        await this.revokeTokens(clerkUserId);
         
         throw new OAuthTokenError(
           OAuthErrorType.INVALID_GRANT,
@@ -572,7 +572,34 @@ export class QBOTokenService {
         return false;
       }
 
-      const tokenData: TokenRefreshResponse = await response.json();
+      // Check if response has content
+      const responseText = await response.text();
+      if (!responseText || responseText.trim() === '') {
+        logger.error('Token refresh endpoint returned empty response - flushing all tokens');
+        // Don't try to revoke - just flush everything
+        await this.clearTokens(clerkUserId);
+        throw new OAuthTokenError(
+          OAuthErrorType.INVALID_GRANT,
+          'Token refresh endpoint returned empty response - tokens flushed, re-authentication required',
+          null,
+          false,
+          true
+        );
+      }
+
+      let tokenData: TokenRefreshResponse;
+      try {
+        tokenData = JSON.parse(responseText);
+      } catch (parseError) {
+        logger.error('Failed to parse token refresh response', { responseText, parseError });
+        throw new OAuthTokenError(
+          OAuthErrorType.INVALID_GRANT,
+          'Invalid JSON response from token refresh endpoint',
+          parseError,
+          false,
+          true
+        );
+      }
 
       // Update tokens in database
       const success = await this.updateRefreshedTokens(clerkUserId, tokenData, currentTokens);
@@ -596,7 +623,7 @@ export class QBOTokenService {
 
         // Handle different error types
         if (error.requiresReauth) {
-          await this.deactivateExistingTokens(clerkUserId);
+          await this.revokeTokens(clerkUserId);
         }
 
         if (!error.isRetryable) {
@@ -653,8 +680,9 @@ export class QBOTokenService {
 
     // For invalid_grant errors, immediately clear tokens (no retry needed)
     if (errorType === OAuthErrorType.INVALID_GRANT) {
-      logger.info('Invalid grant detected - clearing invalid tokens for re-authentication');
-      await this.deactivateExistingTokens(clerkUserId);
+      logger.info('Invalid grant detected - flushing all tokens for re-authentication');
+      // Don't try to revoke invalid tokens - just flush them
+      await this.clearTokens(clerkUserId);
     }
 
     throw new OAuthTokenError(
@@ -787,6 +815,7 @@ export class QBOTokenService {
 
   /**
    * Revoke tokens (for logout or deactivation)
+   * If revocation fails, flush everything and force re-auth
    */
   static async revokeTokens(clerkUserId: string): Promise<boolean> {
     try {
@@ -805,6 +834,7 @@ export class QBOTokenService {
         // client_secret added server-side by N8N proxy for security
       };
 
+      let revocationSuccessful = false;
       try {
         const response = await fetch(config.revokeEndpoint, {
           method: 'POST',
@@ -816,19 +846,41 @@ export class QBOTokenService {
         });
 
         if (!response.ok) {
-          logger.warn('Token revocation failed', { status: response.status });
+          logger.warn('Token revocation failed at OAuth provider', { status: response.status });
+          // Check if it's an invalid_grant error
+          try {
+            const errorBody = await response.json();
+            if (errorBody.error === 'invalid_grant' || errorBody.errorDescription === 'invalid_grant') {
+              logger.info('Tokens already invalid at OAuth provider, proceeding with local cleanup');
+            }
+          } catch {}
         } else {
-          logger.info('Tokens revoked successfully');
+          logger.info('Tokens revoked successfully at OAuth provider');
+          revocationSuccessful = true;
         }
       } catch (error) {
-        logger.warn('Failed to revoke tokens at OAuth provider', error);
+        logger.warn('Failed to revoke tokens at OAuth provider (network/timeout error)', error);
       }
 
-      // Always deactivate tokens locally
-      return await this.deactivateExistingTokens(clerkUserId);
+      // Always flush tokens locally regardless of revocation result
+      // This ensures we clean up even if revocation fails
+      logger.info('Flushing all QBO tokens locally');
+      const flushed = await this.clearTokens(clerkUserId);
+      
+      if (!flushed) {
+        logger.error('Failed to flush tokens from database');
+        // Try deactivating as fallback
+        await this.deactivateExistingTokens(clerkUserId);
+      }
+      
+      return true; // Always return true to force re-authentication
     } catch (error) {
-      logger.error('Error revoking tokens', error);
-      return false;
+      logger.error('Error in token revocation process', error);
+      // Last resort - try to clear everything
+      try {
+        await this.clearTokens(clerkUserId);
+      } catch {}
+      return true; // Force re-auth even on error
     }
   }
 }

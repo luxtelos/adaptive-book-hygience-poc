@@ -128,15 +128,9 @@ ${assessmentResults.businessOwnerSummary.nextSteps.map(step => `• ${step}`).jo
 
 ## Day-30 Readiness Assessment Breakdown
 
-### Pillar Scores
+### Assessment Summary
 
-| Pillar | Score | Weight |
-|--------|-------|---------|
-| Bank & Credit Card Reconciliation | ${assessmentResults.pillarScores.reconciliation}% | 30% |
-| Chart of Accounts Integrity | ${assessmentResults.pillarScores.coaIntegrity}% | 20% |
-| Transaction Categorization | ${assessmentResults.pillarScores.categorization}% | 20% |
-| Control Account Accuracy | ${assessmentResults.pillarScores.controlAccount}% | 15% |
-| A/R & A/P Validity | ${assessmentResults.pillarScores.aging}% | 15% |
+The detailed assessment has been completed and the overall score reflects the quality of the QuickBooks data across all key areas.
 
 ---
 

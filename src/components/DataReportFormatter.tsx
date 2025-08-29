@@ -76,131 +76,44 @@ export const DataReportFormatter: React.FC<DataReportFormatterProps> = ({
 
   // Transform webhook data into LLM-expected format
   const formatReportSections = (): FormattedReportSection[] => {
-    const { pillarData, meta } = webhookData;
+    const { rawQBOData, meta } = webhookData;
 
     return [
       {
-        title: 'Bank Reconciliation Reports',
-        description: 'Bank and credit card reconciliation status and outstanding items',
-        isEmpty: !pillarData.reconciliation?.variance?.length,
-        data: {
-          analysisPeriod: `${formatDate(meta.start_date)} to ${formatDate(meta.end_date)}`,
-          clearedColumnFound: pillarData.reconciliation?.clearedColumnFound || false,
-          accountsAnalyzed: pillarData.reconciliation?.byAccount?.length || 0,
-          reconciliationSummary: pillarData.reconciliation?.byAccount?.map(account => ({
-            accountName: account.account,
-            outstandingItems30Days: account.outstanding_30d_count,
-            outstandingAmount30Days: formatCurrency(account.outstanding_30d_amount),
-            clearedAmount: formatCurrency(account.cleared_amount),
-            unclearedAmount: formatCurrency(account.uncleared_amount),
-            totalTransactions: account.txns
-          })) || [],
-          varianceAnalysis: pillarData.reconciliation?.variance?.map(variance => ({
-            account: variance.account,
-            bookEndingBalance: formatCurrency(variance.bookEndingBalance),
-            clearedAmount: formatCurrency(variance.clearedAmount),
-            unclearedAmount: formatCurrency(variance.unclearedAmount),
-            outstanding30dAmount: formatCurrency(variance.outstanding30dAmount),
-            variance: formatCurrency(variance.varianceBookVsCleared)
-          })) || []
-        }
+        title: 'Transaction List',
+        description: 'QuickBooks transaction data',
+        isEmpty: !rawQBOData?.txnList,
+        data: rawQBOData?.txnList || {}
       },
       {
         title: 'Chart of Accounts',
-        description: 'Account structure, duplicates, and integrity issues',
-        isEmpty: !pillarData.chartIntegrity?.totals?.accounts,
-        data: {
-          totalAccounts: pillarData.chartIntegrity?.totals?.accounts || 0,
-          dataSource: pillarData.chartIntegrity?.source || 'Unknown',
-          duplicateAccountNames: pillarData.chartIntegrity?.duplicates?.name || [],
-          duplicateAccountNumbers: pillarData.chartIntegrity?.duplicates?.acctNum || [],
-          accountsMissingDetail: pillarData.chartIntegrity?.missingDetail?.map(account => ({
-            id: account.id,
-            name: account.name
-          })) || [],
-          subAccountsMissingParent: pillarData.chartIntegrity?.subAccountsMissingParent?.map(account => ({
-            id: account.id,
-            name: account.name
-          })) || []
-        }
+        description: 'QuickBooks account structure',
+        isEmpty: !rawQBOData?.chartOfAccounts,
+        data: rawQBOData?.chartOfAccounts || {}
       },
       {
-        title: 'General Ledger',
-        description: 'Transaction categorization and uncategorized items',
-        isEmpty: !pillarData.categorization?.uncategorized,
-        data: {
-          uncategorizedSummary: Object.entries(pillarData.categorization?.uncategorized || {}).map(([category, data]) => ({
-            category,
-            transactionCount: (data as any).count || 0,
-            totalAmount: formatCurrency((data as any).amount || 0)
-          })),
-          totalUncategorizedAmount: Object.values(pillarData.categorization?.uncategorized || {})
-            .reduce((sum, item) => sum + ((item as any).amount || 0), 0),
-          totalUncategorizedCount: Object.values(pillarData.categorization?.uncategorized || {})
-            .reduce((sum, item) => sum + ((item as any).count || 0), 0)
-        }
+        title: 'Journal Entries',
+        description: 'QuickBooks journal entries',
+        isEmpty: !rawQBOData?.journalEntries,
+        data: rawQBOData?.journalEntries || {}
       },
       {
         title: 'Trial Balance',
-        description: 'Control account balances and journal entries',
-        isEmpty: !pillarData.controlAccounts,
-        data: {
-          openingBalanceEquity: {
-            balance: formatCurrency(pillarData.controlAccounts?.openingBalanceEquity?.balance || 0),
-            accountId: pillarData.controlAccounts?.openingBalanceEquity?.accountId || 'Not found'
-          },
-          undepositedFunds: {
-            balance: formatCurrency(pillarData.controlAccounts?.undepositedFunds?.balance || 0),
-            accountId: pillarData.controlAccounts?.undepositedFunds?.accountId || 'Not found'
-          },
-          accountsReceivable: {
-            balance: formatCurrency(pillarData.controlAccounts?.ar?.balance || 0),
-            accountId: pillarData.controlAccounts?.ar?.accountId || 'Not found'
-          },
-          accountsPayable: {
-            balance: formatCurrency(pillarData.controlAccounts?.ap?.balance || 0),
-            accountId: pillarData.controlAccounts?.ap?.accountId || 'Not found'
-          },
-          journalEntriesToARorAP: pillarData.controlAccounts?.journalEntriesToARorAP || 0
-        }
+        description: 'QuickBooks trial balance report',
+        isEmpty: !rawQBOData?.trialBal,
+        data: rawQBOData?.trialBal || {}
       },
       {
         title: 'A/R Aging',
-        description: 'Accounts receivable aging analysis',
-        isEmpty: !pillarData.arApValidity?.arAging,
-        data: {
-          current: formatCurrency(pillarData.arApValidity?.arAging?.current || 0),
-          days1_30: formatCurrency(pillarData.arApValidity?.arAging?.d1_30 || 0),
-          days31_60: formatCurrency(pillarData.arApValidity?.arAging?.d31_60 || 0),
-          days61_90: formatCurrency(pillarData.arApValidity?.arAging?.d61_90 || 0),
-          days90Plus: formatCurrency(pillarData.arApValidity?.arAging?.d90_plus || 0),
-          totalAR: formatCurrency(
-            (pillarData.arApValidity?.arAging?.current || 0) +
-            (pillarData.arApValidity?.arAging?.d1_30 || 0) +
-            (pillarData.arApValidity?.arAging?.d31_60 || 0) +
-            (pillarData.arApValidity?.arAging?.d61_90 || 0) +
-            (pillarData.arApValidity?.arAging?.d90_plus || 0)
-          )
-        }
+        description: 'Accounts receivable aging report',
+        isEmpty: !rawQBOData?.ar,
+        data: rawQBOData?.ar || {}
       },
       {
         title: 'A/P Aging',
-        description: 'Accounts payable aging analysis',
-        isEmpty: !pillarData.arApValidity?.apAging,
-        data: {
-          current: formatCurrency(pillarData.arApValidity?.apAging?.current || 0),
-          days1_30: formatCurrency(pillarData.arApValidity?.apAging?.d1_30 || 0),
-          days31_60: formatCurrency(pillarData.arApValidity?.apAging?.d31_60 || 0),
-          days61_90: formatCurrency(pillarData.arApValidity?.apAging?.d61_90 || 0),
-          days90Plus: formatCurrency(pillarData.arApValidity?.apAging?.d90_plus || 0),
-          totalAP: formatCurrency(
-            (pillarData.arApValidity?.apAging?.current || 0) +
-            (pillarData.arApValidity?.apAging?.d1_30 || 0) +
-            (pillarData.arApValidity?.apAging?.d31_60 || 0) +
-            (pillarData.arApValidity?.apAging?.d61_90 || 0) +
-            (pillarData.arApValidity?.apAging?.d90_plus || 0)
-          )
-        }
+        description: 'Accounts payable aging report',
+        isEmpty: !rawQBOData?.ap,
+        data: rawQBOData?.ap || {}
       }
     ];
   };

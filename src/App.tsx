@@ -118,7 +118,17 @@ function AppContent() {
           setRefreshToken(tokens.refresh_token);
           setRealmId(tokens.realm_id);
         } else {
-          logger.debug("No valid stored tokens found");
+          logger.debug("No valid stored tokens found, clearing token state");
+          // Clear any stale token state
+          setAccessToken(null);
+          setRefreshToken(null);
+          setRealmId(null);
+          
+          // If we found invalid tokens, clear them from database
+          if (tokens) {
+            logger.info("Clearing invalid tokens from database");
+            await QBOTokenService.clearTokens(user.id);
+          }
         }
       } catch (error) {
         logger.error("Error loading stored QBO tokens", error);
