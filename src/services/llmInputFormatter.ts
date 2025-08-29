@@ -10,145 +10,279 @@ interface LLMInputData {
 
 export class LLMInputFormatter {
   /**
-   * Formats data in plaintext/markdown format for USER VIEWING and PDF generation
-   * NOTE: This is NOT for sending to the LLM API - the LLM needs structured JSON data
-   * This is what users will see and can download as .md or view as PDF
+   * Formats raw QBO data in table format for USER VIEWING and PDF generation
+   * Shows the actual QuickBooks data in readable tables, not computed scores
    */
   static formatForLLM(data: LLMInputData): string {
     const { webhookData, calculatedAssessment, formattedDate, companyName } = data;
     
-    if (!webhookData?.pillarData) {
-      logger.error('Missing webhook pillar data for LLM formatting');
-      throw new Error('Missing required pillar data');
+    if (!webhookData?.rawQBOData) {
+      logger.error('Missing webhook data for formatting');
+      throw new Error('Missing required data');
     }
+    
+    // Use raw QBO data if available, otherwise show import status only
+    const rawData = webhookData.rawQBOData;
 
     const output = [];
     
     // Header
-    output.push('# QuickBooks Online Financial Data Analysis');
+    output.push('# QuickBooks Online Financial Data Report');
     output.push(`Company: ${companyName}`);
-    output.push(`Assessment Date: ${formattedDate}`);
+    output.push(`Report Date: ${formattedDate}`);
     output.push(`Data Period: ${webhookData.meta.start_date} to ${webhookData.meta.end_date} (${webhookData.meta.windowDays} days)`);
     output.push('');
     output.push('---');
     output.push('');
     
-    // Pillar 1: Bank & Credit Card Reconciliation
-    output.push('## PILLAR 1: BANK & CREDIT CARD RECONCILIATION');
+    // Data Import Status
+    output.push('## DATA IMPORT STATUS');
+    output.push('');
+    output.push('| Data Type | Status |');
+    output.push('|-----------|--------|');
+    output.push(`| Chart of Accounts | ${rawData?.chartOfAccounts ? '✅ Imported' : '⏳ Pending'} |`);
+    output.push(`| Transaction List | ${rawData?.txnList ? '✅ Imported' : '⏳ Pending'} |`);
+    output.push(`| Accounts Receivable | ${rawData?.ar ? '✅ Imported' : '⏳ Pending'} |`);
+    output.push(`| Accounts Payable | ${rawData?.ap ? '✅ Imported' : '⏳ Pending'} |`);
+    output.push(`| Trial Balance | ${rawData?.trialBal ? '✅ Imported' : '⏳ Pending'} |`);
+    output.push(`| Journal Entries | ${rawData?.journalEntries ? '✅ Imported' : '⏳ Pending'} |`);
     output.push('');
     
-    const recon = webhookData.pillarData.reconciliation;
-    output.push(`Total Bank/CC Accounts: ${recon.variance?.length || 0}`);
-    output.push(`Transactions Processed: ${recon.totalTransactionsProcessed || 0}`);
-    output.push(`Has Transaction Data: ${recon.hasTransactionData ? 'Yes' : 'No'}`);
-    output.push('');
-    
-    output.push('### Account Variance Analysis:');
-    if (recon.variance && recon.variance.length > 0) {
-      recon.variance.forEach((acc: any) => {
-        output.push(`- ${acc.account}:`);
-        output.push(`  - Book Ending Balance: $${acc.bookEndingBalance.toFixed(2)}`);
-        output.push(`  - Cleared Amount: $${acc.clearedAmount.toFixed(2)}`);
-        output.push(`  - Uncleared Amount: $${acc.unclearedAmount.toFixed(2)}`);
-        output.push(`  - Variance: $${acc.varianceBookVsCleared.toFixed(2)}`);
-      });
-    } else {
-      output.push('No variance data available');
-    }
-    output.push('');
-    
-    // Pillar 2: Chart of Accounts Integrity
-    output.push('## PILLAR 2: CHART OF ACCOUNTS INTEGRITY');
-    output.push('');
-    
-    const coa = webhookData.pillarData.chartIntegrity;
-    output.push(`Total Accounts: ${coa.totals.accounts}`);
-    output.push(`Duplicate Account Names: ${coa.duplicates.name.length}`);
-    if (coa.duplicates.name.length > 0) {
-      output.push(`  - Duplicates: ${coa.duplicates.name.join(', ')}`);
-    }
-    output.push(`Duplicate Account Numbers: ${coa.duplicates.acctNum.length}`);
-    output.push(`Accounts Missing Details: ${coa.missingDetail.length}`);
-    output.push(`Sub-accounts Missing Parent: ${coa.subAccountsMissingParent.length}`);
-    output.push('');
-    
-    // Pillar 3: Transaction Categorization
-    output.push('## PILLAR 3: TRANSACTION CATEGORIZATION');
-    output.push('');
-    
-    const categ = webhookData.pillarData.categorization;
-    output.push('### Uncategorized Transactions:');
-    Object.entries(categ.uncategorized).forEach(([category, data]: [string, any]) => {
-      output.push(`- ${category}:`);
-      output.push(`  - Count: ${data.count}`);
-      output.push(`  - Amount: $${data.amount.toFixed(2)}`);
-    });
-    output.push('');
-    
-    // Pillar 4: Control Account Accuracy
-    output.push('## PILLAR 4: CONTROL ACCOUNT ACCURACY');
-    output.push('');
-    
-    const control = webhookData.pillarData.controlAccounts;
-    output.push(`Opening Balance Equity: $${control.openingBalanceEquity.balance.toFixed(2)}`);
-    output.push(`Undeposited Funds: $${control.undepositedFunds.balance.toFixed(2)}`);
-    output.push(`Accounts Receivable: $${control.ar.balance.toFixed(2)}`);
-    output.push(`Accounts Payable: $${control.ap.balance.toFixed(2)}`);
-    output.push(`Journal Entries to AR/AP: ${control.journalEntriesToARorAP}`);
-    output.push('');
-    
-    // Validation data may not always be present
-    output.push('');
-    
-    // Pillar 5: A/R & A/P Validity
-    output.push('## PILLAR 5: ACCOUNTS RECEIVABLE & PAYABLE VALIDITY');
-    output.push('');
-    
-    const aging = webhookData.pillarData.arApValidity;
-    output.push('### Accounts Receivable Aging:');
-    output.push(`- Current: $${aging.arAging.current.toFixed(2)}`);
-    output.push(`- 1-30 days: $${aging.arAging.d1_30.toFixed(2)}`);
-    output.push(`- 31-60 days: $${aging.arAging.d31_60.toFixed(2)}`);
-    output.push(`- 61-90 days: $${aging.arAging.d61_90.toFixed(2)}`);
-    output.push(`- Over 90 days: $${aging.arAging.d90_plus.toFixed(2)}`);
-    const arTotal = aging.arAging.current + aging.arAging.d1_30 + aging.arAging.d31_60 + aging.arAging.d61_90 + aging.arAging.d90_plus;
-    output.push(`- Total: $${arTotal.toFixed(2)}`);
-    output.push('');
-    
-    output.push('### Accounts Payable Aging:');
-    output.push(`- Current: $${aging.apAging.current.toFixed(2)}`);
-    output.push(`- 1-30 days: $${aging.apAging.d1_30.toFixed(2)}`);
-    output.push(`- 31-60 days: $${aging.apAging.d31_60.toFixed(2)}`);
-    output.push(`- 61-90 days: $${aging.apAging.d61_90.toFixed(2)}`);
-    output.push(`- Over 90 days: $${aging.apAging.d90_plus.toFixed(2)}`);
-    const apTotal = aging.apAging.current + aging.apAging.d1_30 + aging.apAging.d31_60 + aging.apAging.d61_90 + aging.apAging.d90_plus;
-    output.push(`- Total: $${apTotal.toFixed(2)}`);
-    output.push('');
-    
-    // Data Quality Summary - removed as it's not part of WebhookPillarData type
-    output.push('');
-    
-    // Calculated Assessment Summary
-    output.push('## CALCULATED ASSESSMENT SCORES');
-    output.push('');
-    
-    if (calculatedAssessment) {
-      output.push(`Overall Score: ${calculatedAssessment.overallScore}/100`);
-      output.push(`Readiness Status: ${calculatedAssessment.readinessStatus}`);
-      output.push('');
+    if (rawData) {
+      // Chart of Accounts Table - Show ALL accounts
+      if (rawData.chartOfAccounts?.Account) {
+        output.push('## CHART OF ACCOUNTS');
+        output.push('');
+        output.push('| Account Name | Type | SubType | Balance | Status |');
+        output.push('|--------------|------|---------|---------|--------|');
+        
+        const accounts = rawData.chartOfAccounts.Account;
+        accounts.forEach((acc: any) => {
+          output.push(`| ${acc.Name || 'N/A'} | ${acc.AccountType || 'N/A'} | ${acc.AccountSubType || 'N/A'} | $${(acc.CurrentBalance || 0).toFixed(2)} | ${acc.Active ? 'Active' : 'Inactive'} |`);
+        });
+        output.push('');
+      }
       
-      output.push('### Pillar Scores:');
-      output.push(`- Bank & Credit Card Reconciliation: ${calculatedAssessment.pillarScores.reconciliation}/100`);
-      output.push(`- Chart of Accounts Integrity: ${calculatedAssessment.pillarScores.coaIntegrity}/100`);
-      output.push(`- Transaction Categorization: ${calculatedAssessment.pillarScores.categorization}/100`);
-      output.push(`- Control Account Accuracy: ${calculatedAssessment.pillarScores.controlAccount}/100`);
-      output.push(`- A/R & A/P Validity: ${calculatedAssessment.pillarScores.aging}/100`);
+      // Transaction List Table - Show more comprehensive data
+      if (rawData.txnList?.rows?.Row || rawData.txnList?.QueryResponse?.Transaction) {
+        output.push('## TRANSACTION LIST');
+        output.push('');
+        
+        // Handle different transaction data structures
+        if (rawData.txnList.rows?.Row) {
+          output.push('| Date | Transaction Type | Name | Memo | Account | Amount |');
+          output.push('|------|------------------|------|------|---------|--------|');
+          
+          const rows = Array.isArray(rawData.txnList.rows.Row) ? rawData.txnList.rows.Row : [rawData.txnList.rows.Row];
+          rows.forEach((row: any) => {
+            if (row.ColData && row.ColData.length >= 6) {
+              const cols = row.ColData;
+              output.push(`| ${cols[0]?.value || 'N/A'} | ${cols[1]?.value || 'N/A'} | ${cols[2]?.value || 'N/A'} | ${cols[3]?.value || 'N/A'} | ${cols[4]?.value || 'N/A'} | ${cols[5]?.value || '0'} |`);
+            }
+          });
+        } else if (rawData.txnList.QueryResponse?.Transaction) {
+          output.push('| Date | Type | Entity | Memo | Amount | Balance |');
+          output.push('|------|------|--------|------|--------|---------|');
+          
+          const transactions = rawData.txnList.QueryResponse.Transaction;
+          transactions.forEach((txn: any) => {
+            const date = txn.TxnDate || 'N/A';
+            const type = txn.domain || txn.type || 'Transaction';
+            const entity = txn.EntityRef?.name || txn.CustomerRef?.name || txn.VendorRef?.name || 'N/A';
+            const memo = txn.PrivateNote || txn.Memo || '';
+            const amount = txn.TotalAmt || txn.Amount || 0;
+            const balance = txn.Balance || 0;
+            
+            output.push(`| ${date} | ${type} | ${entity} | ${memo} | $${amount.toFixed(2)} | $${balance.toFixed(2)} |`);
+          });
+        }
+        output.push('');
+      }
+      
+      // A/R Aging Summary - Show ALL customers
+      if (rawData.ar?.rows?.Row) {
+        output.push('## ACCOUNTS RECEIVABLE AGING');
+        output.push('');
+        output.push('| Customer | Current | 1-30 Days | 31-60 Days | 61-90 Days | 90+ Days | Total |');
+        output.push('|----------|---------|-----------|------------|------------|----------|-------|');
+        
+        const arRows = Array.isArray(rawData.ar.rows.Row) ? rawData.ar.rows.Row : [rawData.ar.rows.Row];
+        arRows.forEach((row: any) => {
+          // Skip summary rows and show actual customer data
+          if (row.ColData && !row.Summary && !row.group) {
+            const cols = row.ColData;
+            if (cols.length >= 7) {
+              output.push(`| ${cols[0]?.value || 'N/A'} | $${cols[1]?.value || '0'} | $${cols[2]?.value || '0'} | $${cols[3]?.value || '0'} | $${cols[4]?.value || '0'} | $${cols[5]?.value || '0'} | $${cols[6]?.value || '0'} |`);
+            }
+          }
+        });
+        
+        // Add Grand Total row if exists
+        const totalRow = arRows.find((row: any) => row.group === 'GrandTotal');
+        if (totalRow?.Summary?.ColData) {
+          const cols = totalRow.Summary.ColData;
+          output.push('|----------|---------|-----------|------------|------------|----------|-------|');
+          output.push(`| **TOTAL** | **$${cols[1]?.value || '0'}** | **$${cols[2]?.value || '0'}** | **$${cols[3]?.value || '0'}** | **$${cols[4]?.value || '0'}** | **$${cols[5]?.value || '0'}** | **$${cols[6]?.value || '0'}** |`);
+        }
+        output.push('');
+      }
+      
+      // A/P Aging Summary - Show ALL vendors
+      if (rawData.ap?.rows?.Row) {
+        output.push('## ACCOUNTS PAYABLE AGING');
+        output.push('');
+        output.push('| Vendor | Current | 1-30 Days | 31-60 Days | 61-90 Days | 90+ Days | Total |');
+        output.push('|--------|---------|-----------|------------|------------|----------|-------|');
+        
+        const apRows = Array.isArray(rawData.ap.rows.Row) ? rawData.ap.rows.Row : [rawData.ap.rows.Row];
+        apRows.forEach((row: any) => {
+          // Skip summary rows and show actual vendor data
+          if (row.ColData && !row.Summary && !row.group) {
+            const cols = row.ColData;
+            if (cols.length >= 7) {
+              output.push(`| ${cols[0]?.value || 'N/A'} | $${cols[1]?.value || '0'} | $${cols[2]?.value || '0'} | $${cols[3]?.value || '0'} | $${cols[4]?.value || '0'} | $${cols[5]?.value || '0'} | $${cols[6]?.value || '0'} |`);
+            }
+          }
+        });
+        
+        // Add Grand Total row if exists
+        const totalRow = apRows.find((row: any) => row.group === 'GrandTotal');
+        if (totalRow?.Summary?.ColData) {
+          const cols = totalRow.Summary.ColData;
+          output.push('|--------|---------|-----------|------------|------------|----------|-------|');
+          output.push(`| **TOTAL** | **$${cols[1]?.value || '0'}** | **$${cols[2]?.value || '0'}** | **$${cols[3]?.value || '0'}** | **$${cols[4]?.value || '0'}** | **$${cols[5]?.value || '0'}** | **$${cols[6]?.value || '0'}** |`);
+        }
+        output.push('');
+      }
+      
+      // Trial Balance - Show ALL accounts
+      if (rawData.trialBal?.rows?.Row || rawData.trialBal?.Rows?.Row) {
+        output.push('## TRIAL BALANCE');
+        output.push('');
+        output.push('| Account | Debit | Credit |');
+        output.push('|---------|-------|--------|');
+        
+        const rows = rawData.trialBal.rows?.Row || rawData.trialBal.Rows?.Row;
+        const tbRows = Array.isArray(rows) ? rows : [rows];
+        
+        let totalDebit = 0;
+        let totalCredit = 0;
+        
+        tbRows.forEach((row: any) => {
+          if (row.ColData && row.ColData.length >= 3) {
+            const cols = row.ColData;
+            const accountName = cols[0]?.value || 'N/A';
+            const debitValue = parseFloat(cols[1]?.value || '0');
+            const creditValue = parseFloat(cols[2]?.value || '0');
+            
+            // Skip total rows in the iteration
+            if (!accountName.toLowerCase().includes('total')) {
+              output.push(`| ${accountName} | ${debitValue !== 0 ? '$' + debitValue.toFixed(2) : ''} | ${creditValue !== 0 ? '$' + Math.abs(creditValue).toFixed(2) : ''} |`);
+              totalDebit += debitValue;
+              totalCredit += Math.abs(creditValue);
+            }
+          }
+        });
+        
+        // Add totals row
+        output.push('|---------|-------|--------|');
+        output.push(`| **TOTAL** | **$${totalDebit.toFixed(2)}** | **$${totalCredit.toFixed(2)}** |`);
+        output.push('');
+      }
+      
+      // Journal Entries - New section
+      if (rawData.journalEntries?.QueryResponse?.JournalEntry) {
+        output.push('## JOURNAL ENTRIES');
+        output.push('');
+        output.push('| Date | Doc Number | Line Description | Account | Debit | Credit |');
+        output.push('|------|------------|------------------|---------|-------|--------|');
+        
+        const entries = Array.isArray(rawData.journalEntries.QueryResponse.JournalEntry) 
+          ? rawData.journalEntries.QueryResponse.JournalEntry 
+          : [rawData.journalEntries.QueryResponse.JournalEntry];
+        
+        entries.forEach((entry: any) => {
+          const date = entry.TxnDate || 'N/A';
+          const docNum = entry.DocNumber || 'N/A';
+          
+          if (entry.Line && Array.isArray(entry.Line)) {
+            entry.Line.forEach((line: any) => {
+              if (line.JournalEntryLineDetail) {
+                const desc = line.Description || '';
+                const accountName = line.JournalEntryLineDetail.AccountRef?.name || 'N/A';
+                const amount = parseFloat(line.Amount || '0');
+                const postingType = line.JournalEntryLineDetail.PostingType;
+                
+                if (postingType === 'Debit') {
+                  output.push(`| ${date} | ${docNum} | ${desc} | ${accountName} | $${amount.toFixed(2)} | |`);
+                } else {
+                  output.push(`| ${date} | ${docNum} | ${desc} | ${accountName} | | $${amount.toFixed(2)} |`);
+                }
+              }
+            });
+          }
+        });
+        output.push('');
+      }
+      
+      // Profit & Loss - New section
+      if (rawData.profitLoss?.rows?.Row || rawData.profitLoss?.Rows?.Row) {
+        output.push('## PROFIT & LOSS');
+        output.push('');
+        output.push('| Account | Amount |');
+        output.push('|---------|--------|');
+        
+        const rows = rawData.profitLoss.rows?.Row || rawData.profitLoss.Rows?.Row;
+        const plRows = Array.isArray(rows) ? rows : [rows];
+        
+        plRows.forEach((row: any) => {
+          if (row.ColData && row.ColData.length >= 2) {
+            const accountName = row.ColData[0]?.value || 'N/A';
+            const amount = row.ColData[1]?.value || '0';
+            
+            // Add indentation for sub-accounts
+            const indent = row.group === 'Income' || row.group === 'Expense' ? '  ' : '';
+            output.push(`| ${indent}${accountName} | $${amount} |`);
+          }
+        });
+        output.push('');
+      }
+      
+      // Balance Sheet - New section
+      if (rawData.balanceSheet?.rows?.Row || rawData.balanceSheet?.Rows?.Row) {
+        output.push('## BALANCE SHEET');
+        output.push('');
+        output.push('| Account | Amount |');
+        output.push('|---------|--------|');
+        
+        const rows = rawData.balanceSheet.rows?.Row || rawData.balanceSheet.Rows?.Row;
+        const bsRows = Array.isArray(rows) ? rows : [rows];
+        
+        bsRows.forEach((row: any) => {
+          if (row.ColData && row.ColData.length >= 2) {
+            const accountName = row.ColData[0]?.value || 'N/A';
+            const amount = row.ColData[1]?.value || '0';
+            
+            // Add section headers
+            if (row.group === 'Assets' || row.group === 'Liabilities' || row.group === 'Equity') {
+              output.push(`| **${accountName}** | **${amount}** |`);
+            } else {
+              output.push(`| ${accountName} | $${amount} |`);
+            }
+          }
+        });
+        output.push('');
+      }
+    } else {
+      output.push('## DATA NOT YET IMPORTED');
+      output.push('');
+      output.push('Raw QuickBooks data has not been imported yet. Please ensure the webhook is properly configured.');
+      output.push('');
     }
-    output.push('');
     
     output.push('---');
     output.push('');
-    output.push('*This data is being sent to the AI for accounting quality assessment analysis*');
+    output.push('*This report shows the raw QuickBooks Online data in tabular format*');
     
     return output.join('\n');
   }

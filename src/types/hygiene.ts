@@ -80,7 +80,6 @@ export interface AssessmentMetadata {
  */
 export interface HygieneAssessmentResult {
   overallScore: number;                    // 0-100 composite score
-  pillarScores: HygienePillarScores;      // Individual pillar breakdown
   readinessStatus: ReadinessStatus;       // Overall status
   businessOwnerSummary: BusinessOwnerSummary;
   bookkeeperReport: BookkeeperReport;
@@ -346,7 +345,6 @@ export function isReadinessStatus(value: string): value is ReadinessStatus {
 export function isCompleteAssessment(assessment: any): assessment is HygieneAssessmentResult {
   return assessment && 
     typeof assessment.overallScore === 'number' &&
-    assessment.pillarScores &&
     assessment.readinessStatus &&
     assessment.businessOwnerSummary &&
     assessment.bookkeeperReport;

@@ -220,7 +220,7 @@ export class RawDataFormatter {
 
   private static formatReconciliationData(data: any): RawReconciliationData {
     const reconciliationData = data.reconciliationAssessment;
-    if (!reconciliationData?.assessments && !data.chartOfAccounts) {
+    if (!reconciliationData?.assessments && !data.chartOfAccounts?.Account) {
       return {
         bankAccounts: [],
         totalBankAccounts: 0,
@@ -255,8 +255,8 @@ export class RawDataFormatter {
       }));
     }
     // Fallback: Extract bank accounts from Chart of Accounts if reconciliation data is missing
-    else if (data.chartOfAccounts) {
-      bankAccounts = data.chartOfAccounts
+    else if (data.chartOfAccounts?.Account) {
+      bankAccounts = data.chartOfAccounts.Account
         .filter(
           (account: any) =>
             account.AccountType === "Bank" ||
@@ -288,7 +288,7 @@ export class RawDataFormatter {
   }
 
   private static formatChartOfAccountsData(data: any): RawChartOfAccountsData {
-    const chartData = data.chartOfAccounts;
+    const chartData = data.chartOfAccounts?.Account;
     const integrityData = data.chartIntegrityAnalysis;
 
     if (!chartData || !Array.isArray(chartData)) {
@@ -375,7 +375,7 @@ export class RawDataFormatter {
 
   private static formatControlAccountsData(data: any): RawControlAccountsData {
     const controlData = data.controlAccountsAnalysis;
-    const chartOfAccounts = data.chartOfAccounts;
+    const chartOfAccounts = data.chartOfAccounts?.Account;
 
     // Initialize default structure
     let openingBalanceEquity = { balance: 0, accountExists: false };
@@ -603,7 +603,7 @@ export class RawDataFormatter {
 
     if (!data.reconciliationAssessment)
       missingReports.push("Bank Reconciliation Data");
-    if (!data.chartOfAccounts) missingReports.push("Chart of Accounts");
+    if (!data.chartOfAccounts?.Account) missingReports.push("Chart of Accounts");
     if (!data.generalLedger) missingReports.push("General Ledger");
     if (!data.trialBalance) missingReports.push("Trial Balance");
     if (!data.arAging) missingReports.push("A/R Aging Report");

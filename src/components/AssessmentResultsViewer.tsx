@@ -239,33 +239,12 @@ export const AssessmentResultsViewer: React.FC<AssessmentResultsViewerProps> = (
             <h3 className="text-2xl font-bold text-gray-900">Detailed Assessment Results</h3>
             
             <div>
-              <h4 className="text-lg font-semibold text-gray-800 mb-4">Pillar Breakdown</h4>
+              <h4 className="text-lg font-semibold text-gray-800 mb-4">Assessment Categories</h4>
               <div className="space-y-3">
-                {[
-                  { name: 'Bank & Credit Card Matching', score: assessmentResult.pillarScores.reconciliation },
-                  { name: 'Money Organization System', score: assessmentResult.pillarScores.coaIntegrity },
-                  { name: 'Transaction Categorization', score: assessmentResult.pillarScores.categorization },
-                  { name: 'Control Account Accuracy', score: assessmentResult.pillarScores.controlAccount },
-                  { name: 'Customer/Vendor Balances', score: assessmentResult.pillarScores.aging },
-                ].map((pillar, idx) => (
-                  <div key={idx} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                    <span className="font-medium text-gray-700">{pillar.name}</span>
-                    <div className="flex items-center gap-3">
-                      <div className="w-32 bg-gray-200 rounded-full h-2">
-                        <div
-                          className={`h-2 rounded-full ${
-                            pillar.score >= 85 ? 'bg-green-500' : 
-                            pillar.score >= 70 ? 'bg-yellow-500' : 'bg-red-500'
-                          }`}
-                          style={{ width: `${pillar.score}%` }}
-                        />
-                      </div>
-                      <span className={`font-bold ${getScoreColor(pillar.score)}`}>
-                        {pillar.score}/100
-                      </span>
-                    </div>
-                  </div>
-                ))}
+                <p className="text-gray-600">
+                  The detailed category breakdown has been analyzed by our AI assessment engine
+                  and incorporated into the overall score and recommendations above.
+                </p>
               </div>
             </div>
           </div>

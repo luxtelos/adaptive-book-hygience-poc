@@ -128,9 +128,10 @@ const QBOAuth: React.FC<QBOAuthProps> = ({
             navigate("/assessment");
             return;
           } else {
-            logger.debug("Found expired/invalid tokens, will show connect button");
-            // Deactivate invalid tokens
-            await QBOTokenService.deactivateExistingTokens(user.id);
+            logger.debug("Found expired/invalid tokens, clearing them completely");
+            // Clear invalid tokens completely (not just deactivate)
+            await QBOTokenService.clearTokens(user.id);
+            setStoredTokens(null);
           }
         } else {
           logger.debug("No existing QBO tokens found");
@@ -146,15 +147,16 @@ const QBOAuth: React.FC<QBOAuthProps> = ({
   }, [isLoaded, user, navigate]);
 
   // Auto-redirect to assessment when access token is received
+  // BUT only if we haven't detected invalid tokens
   useEffect(() => {
-    if (accessToken) {
+    if (accessToken && storedTokens) {
       const timer = setTimeout(() => {
         navigate("/assessment");
       }, 2000); // 2 second delay to show success message
 
       return () => clearTimeout(timer);
     }
-  }, [accessToken, navigate]);
+  }, [accessToken, storedTokens, navigate]);
 
   const loginWithQuickBooks = async (forceClearTokens = false) => {
     console.log("🔴 loginWithQuickBooks CALLED!", { forceClearTokens });
@@ -298,8 +300,8 @@ const QBOAuth: React.FC<QBOAuthProps> = ({
               </p>
             </div>
 
-            {/* Success State */}
-            {accessToken && (
+            {/* Success State - only show if we have valid tokens */}
+            {accessToken && storedTokens && (
               <div className="bg-green-50 border border-green-200 rounded-lg p-6 text-center">
                 <CheckCircledIcon className="w-12 h-12 text-green-600 mx-auto mb-4" />
                 <h3 className="text-xl font-semibold text-gray-900 mb-2">

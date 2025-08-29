@@ -89,13 +89,9 @@ ${assessmentResult.businessOwnerSummary.nextSteps.map(step => `• ${step}`).joi
 
 ## SECTION 2: DETAILED ASSESSMENT RESULTS
 
-### PILLAR BREAKDOWN:
+### ASSESSMENT BREAKDOWN:
 
-• Bank & Credit Card Matching: ${assessmentResult.pillarScores.reconciliation}/100
-• Money Organization System: ${assessmentResult.pillarScores.coaIntegrity}/100
-• Transaction Categorization: ${assessmentResult.pillarScores.categorization}/100
-• Control Account Accuracy: ${assessmentResult.pillarScores.controlAccount}/100
-• Customer/Vendor Balances: ${assessmentResult.pillarScores.aging}/100
+The detailed assessment breakdown is included in the executive summary above.
 
 ---
 
