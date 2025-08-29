@@ -8,6 +8,17 @@ interface LLMInputData {
   companyName: string;
 }
 
+/**
+ * Utility function to ensure data is always an array
+ * Handles null, undefined, single values, and arrays
+ * @param data - The data to convert to array
+ * @returns Empty array if null/undefined, otherwise array of data
+ */
+function ensureArray<T>(data: T | T[] | null | undefined): T[] {
+  if (!data) return [];
+  return Array.isArray(data) ? data : [data];
+}
+
 export class LLMInputFormatter {
   /**
    * Formats raw QBO data in table format for USER VIEWING and PDF generation
@@ -73,8 +84,7 @@ export class LLMInputFormatter {
           output.push('| Date | Transaction Type | Name | Memo | Account | Amount |');
           output.push('|------|------------------|------|------|---------|--------|');
           
-          const rowData = rawData.txnList.rows.Row;
-          const rows = !rowData ? [] : Array.isArray(rowData) ? rowData : [rowData];
+          const rows = ensureArray(rawData.txnList.rows.Row);
           rows.forEach((row: any) => {
             if (row.ColData && row.ColData.length >= 6) {
               const cols = row.ColData;
@@ -85,7 +95,7 @@ export class LLMInputFormatter {
           output.push('| Date | Type | Entity | Memo | Amount | Balance |');
           output.push('|------|------|--------|------|--------|---------|');
           
-          const transactions = rawData.txnList.QueryResponse.Transaction;
+          const transactions = ensureArray(rawData.txnList.QueryResponse.Transaction);
           transactions.forEach((txn: any) => {
             const date = txn.TxnDate || 'N/A';
             const type = txn.domain || txn.type || 'Transaction';
@@ -107,8 +117,7 @@ export class LLMInputFormatter {
         output.push('| Customer | Current | 1-30 Days | 31-60 Days | 61-90 Days | 90+ Days | Total |');
         output.push('|----------|---------|-----------|------------|------------|----------|-------|');
         
-        const rowData = rawData.ar.rows.Row;
-        const arRows = !rowData ? [] : Array.isArray(rowData) ? rowData : [rowData];
+        const arRows = ensureArray(rawData.ar.rows.Row);
         arRows.forEach((row: any) => {
           // Skip summary rows and show actual customer data
           if (row.ColData && !row.Summary && !row.group) {
@@ -136,8 +145,7 @@ export class LLMInputFormatter {
         output.push('| Vendor | Current | 1-30 Days | 31-60 Days | 61-90 Days | 90+ Days | Total |');
         output.push('|--------|---------|-----------|------------|------------|----------|-------|');
         
-        const rowData = rawData.ap.rows.Row;
-        const apRows = !rowData ? [] : Array.isArray(rowData) ? rowData : [rowData];
+        const apRows = ensureArray(rawData.ap.rows.Row);
         apRows.forEach((row: any) => {
           // Skip summary rows and show actual vendor data
           if (row.ColData && !row.Summary && !row.group) {
@@ -166,7 +174,7 @@ export class LLMInputFormatter {
         output.push('|---------|-------|--------|');
         
         const rows = rawData.trialBal.rows?.Row || rawData.trialBal.Rows?.Row;
-        const tbRows = !rows ? [] : Array.isArray(rows) ? rows : [rows];
+        const tbRows = ensureArray(rows);
         
         let totalDebit = 0;
         let totalCredit = 0;
@@ -200,8 +208,7 @@ export class LLMInputFormatter {
         output.push('| Date | Doc Number | Line Description | Account | Debit | Credit |');
         output.push('|------|------------|------------------|---------|-------|--------|');
         
-        const entryData = rawData.journalEntries.QueryResponse.JournalEntry;
-        const entries = !entryData ? [] : Array.isArray(entryData) ? entryData : [entryData];
+        const entries = ensureArray(rawData.journalEntries.QueryResponse.JournalEntry);
         
         entries.forEach((entry: any) => {
           const date = entry.TxnDate || 'N/A';
@@ -235,7 +242,7 @@ export class LLMInputFormatter {
         output.push('|---------|--------|');
         
         const rows = rawData.profitLoss.rows?.Row || rawData.profitLoss.Rows?.Row;
-        const plRows = !rows ? [] : Array.isArray(rows) ? rows : [rows];
+        const plRows = ensureArray(rows);
         
         plRows.forEach((row: any) => {
           if (row.ColData && row.ColData.length >= 2) {
@@ -258,7 +265,7 @@ export class LLMInputFormatter {
         output.push('|---------|--------|');
         
         const rows = rawData.balanceSheet.rows?.Row || rawData.balanceSheet.Rows?.Row;
-        const bsRows = !rows ? [] : Array.isArray(rows) ? rows : [rows];
+        const bsRows = ensureArray(rows);
         
         bsRows.forEach((row: any) => {
           if (row.ColData && row.ColData.length >= 2) {
