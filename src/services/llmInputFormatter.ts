@@ -73,7 +73,8 @@ export class LLMInputFormatter {
           output.push('| Date | Transaction Type | Name | Memo | Account | Amount |');
           output.push('|------|------------------|------|------|---------|--------|');
           
-          const rows = Array.isArray(rawData.txnList.rows.Row) ? rawData.txnList.rows.Row : [rawData.txnList.rows.Row];
+          const rowData = rawData.txnList.rows.Row;
+          const rows = !rowData ? [] : Array.isArray(rowData) ? rowData : [rowData];
           rows.forEach((row: any) => {
             if (row.ColData && row.ColData.length >= 6) {
               const cols = row.ColData;
@@ -106,7 +107,8 @@ export class LLMInputFormatter {
         output.push('| Customer | Current | 1-30 Days | 31-60 Days | 61-90 Days | 90+ Days | Total |');
         output.push('|----------|---------|-----------|------------|------------|----------|-------|');
         
-        const arRows = Array.isArray(rawData.ar.rows.Row) ? rawData.ar.rows.Row : [rawData.ar.rows.Row];
+        const rowData = rawData.ar.rows.Row;
+        const arRows = !rowData ? [] : Array.isArray(rowData) ? rowData : [rowData];
         arRows.forEach((row: any) => {
           // Skip summary rows and show actual customer data
           if (row.ColData && !row.Summary && !row.group) {
@@ -134,7 +136,8 @@ export class LLMInputFormatter {
         output.push('| Vendor | Current | 1-30 Days | 31-60 Days | 61-90 Days | 90+ Days | Total |');
         output.push('|--------|---------|-----------|------------|------------|----------|-------|');
         
-        const apRows = Array.isArray(rawData.ap.rows.Row) ? rawData.ap.rows.Row : [rawData.ap.rows.Row];
+        const rowData = rawData.ap.rows.Row;
+        const apRows = !rowData ? [] : Array.isArray(rowData) ? rowData : [rowData];
         apRows.forEach((row: any) => {
           // Skip summary rows and show actual vendor data
           if (row.ColData && !row.Summary && !row.group) {
@@ -163,7 +166,7 @@ export class LLMInputFormatter {
         output.push('|---------|-------|--------|');
         
         const rows = rawData.trialBal.rows?.Row || rawData.trialBal.Rows?.Row;
-        const tbRows = Array.isArray(rows) ? rows : [rows];
+        const tbRows = !rows ? [] : Array.isArray(rows) ? rows : [rows];
         
         let totalDebit = 0;
         let totalCredit = 0;
@@ -197,9 +200,8 @@ export class LLMInputFormatter {
         output.push('| Date | Doc Number | Line Description | Account | Debit | Credit |');
         output.push('|------|------------|------------------|---------|-------|--------|');
         
-        const entries = Array.isArray(rawData.journalEntries.QueryResponse.JournalEntry) 
-          ? rawData.journalEntries.QueryResponse.JournalEntry 
-          : [rawData.journalEntries.QueryResponse.JournalEntry];
+        const entryData = rawData.journalEntries.QueryResponse.JournalEntry;
+        const entries = !entryData ? [] : Array.isArray(entryData) ? entryData : [entryData];
         
         entries.forEach((entry: any) => {
           const date = entry.TxnDate || 'N/A';
@@ -233,7 +235,7 @@ export class LLMInputFormatter {
         output.push('|---------|--------|');
         
         const rows = rawData.profitLoss.rows?.Row || rawData.profitLoss.Rows?.Row;
-        const plRows = Array.isArray(rows) ? rows : [rows];
+        const plRows = !rows ? [] : Array.isArray(rows) ? rows : [rows];
         
         plRows.forEach((row: any) => {
           if (row.ColData && row.ColData.length >= 2) {
@@ -256,7 +258,7 @@ export class LLMInputFormatter {
         output.push('|---------|--------|');
         
         const rows = rawData.balanceSheet.rows?.Row || rawData.balanceSheet.Rows?.Row;
-        const bsRows = Array.isArray(rows) ? rows : [rows];
+        const bsRows = !rows ? [] : Array.isArray(rows) ? rows : [rows];
         
         bsRows.forEach((row: any) => {
           if (row.ColData && row.ColData.length >= 2) {
