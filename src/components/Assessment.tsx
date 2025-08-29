@@ -1480,10 +1480,10 @@ const Assessment = ({
                       <div className="bg-yellow-50 rounded-lg p-4">
                         <h5 className="font-medium text-yellow-900 mb-2">Categorization</h5>
                         <p className="text-sm text-yellow-700">
-                          {[].reduce((sum: number, cat: any) => sum + cat.count, 0)} uncategorized items
+                          Transaction data imported
                         </p>
                         <p className="text-xs text-yellow-600 mt-1">
-                          Total amount: ${[].reduce((sum: number, cat: any) => sum + cat.amount, 0).toFixed(2)}
+                          Ready for analysis
                         </p>
                       </div>
                       

@@ -220,7 +220,7 @@ export class RawDataFormatter {
 
   private static formatReconciliationData(data: any): RawReconciliationData {
     const reconciliationData = data.reconciliationAssessment;
-    if (!reconciliationData?.assessments && !data.chartOfAccounts?.Account) {
+    if (!reconciliationData?.assessments || !data.chartOfAccounts?.Account) {
       return {
         bankAccounts: [],
         totalBankAccounts: 0,
