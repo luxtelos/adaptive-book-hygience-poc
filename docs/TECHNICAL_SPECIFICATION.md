@@ -1463,12 +1463,75 @@ mindmap
 
 ---
 
+## 🤖 LLM Service Abstraction Layer
+
+### Overview
+The application implements a flexible LLM service abstraction layer that supports multiple AI providers with automatic fallback capabilities and intelligent provider selection based on data size.
+
+### Architecture Design
+- **Pattern**: Adapter Pattern with Factory Pattern
+- **Primary Provider**: Perplexity AI (sonar-reasoning-pro, 4K tokens)
+- **Fallback Provider**: Claude AI (claude-3-haiku, 100K tokens)
+- **Fallback Chain**: Perplexity → Claude → Error
+
+### Key Components
+
+#### BaseLLMService (`src/services/llm/BaseLLMService.ts`)
+Abstract base class providing:
+- Token estimation (1 token ≈ 4 characters)
+- Token limit validation with 80% safety margin
+- Common API request handling with timeout
+- Logger integration for debugging
+
+#### Provider Adapters
+- **PerplexityAdapter**: Handles small to medium datasets (up to 3,200 tokens)
+- **ClaudeAdapter**: Handles large datasets (up to 80,000 tokens)
+
+#### LLMServiceFactory (`src/services/llm/LLMServiceFactory.ts`)
+Singleton factory managing:
+- Service instance caching
+- Automatic provider selection based on data size
+- Fallback chain execution with toast notifications
+- Health check orchestration
+
+### Provider Selection Logic
+```
+if (dataSize <= 3200 tokens && Perplexity available) → Use Perplexity
+else if (Claude available) → Use Claude  
+else → Error (no providers available)
+```
+
+### Toast Notifications
+User-friendly notifications for:
+- Provider switching warnings
+- Analysis success confirmations
+- Error feedback with retry suggestions
+
+### Environment Configuration
+```env
+# Required
+VITE_PERPLEXITY_API_KEY=your_key
+
+# Optional (enables fallback)
+VITE_CLAUDE_API_KEY=your_key
+```
+
+### Testing Coverage
+- Token estimation accuracy
+- Provider selection logic
+- Fallback chain execution
+- Error handling and recovery
+- Response format consistency
+
+---
+
 ## 🔗 Additional Resources
 
 - **Codebase**: `../src`
 - **Methodology**: `docs/Financial Books Hygiene Assessment Methodology.pdf`
 - **API Documentation**: [QuickBooks Online API Reference](https://developer.intuit.com/app/developer/qbo/docs/api/accounting)
 - **Rate Limits**: [QBO API Rate Limiting](https://developer.intuit.com/app/developer/qbo/docs/develop/authentication-and-authorization/oauth-2.0#rate_limiting)
+- **LLM Integration**: See `/src/services/llm/` for implementation details
 
 ---
 
