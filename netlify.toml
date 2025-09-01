@@ -8,6 +8,14 @@ to = "https://local-cor-proxy.onrender.com/proxy/:splat"
 status = 200                                             # Use 200 for a rewrite, which is transparent to the user.
 force = true                                             # Ensures this rule is applied even if a file exists at the path.
 
+# This rule proxies requests from your Netlify site to the Claude API.
+# It handles Claude API requests through a proxy to avoid CORS errors.
+[[redirects]]
+from = "/proxy-claude/*"
+to = "https://api.anthropic.com/v1/:splat"
+status = 200
+force = true
+
 # The following build settings are standard for Vite projects.
 # If you have existing build configurations, you may need to merge them.
 [build]
