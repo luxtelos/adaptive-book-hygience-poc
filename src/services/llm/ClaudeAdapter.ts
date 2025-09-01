@@ -90,6 +90,7 @@ export class ClaudeAdapter extends BaseLLMService {
       headers: {
         'x-api-key': this.config.apiKey,
         'anthropic-version': this.apiVersion,
+        'anthropic-dangerous-direct-browser-access': 'true',
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
@@ -319,6 +320,7 @@ export class ClaudeAdapter extends BaseLLMService {
         headers: {
           'x-api-key': this.config.apiKey,
           'anthropic-version': this.apiVersion,
+          'anthropic-dangerous-direct-browser-access': 'true',
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
