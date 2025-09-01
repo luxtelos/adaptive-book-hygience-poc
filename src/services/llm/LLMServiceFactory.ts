@@ -75,24 +75,28 @@ export class LLMServiceFactory {
         throw new Error('VITE_CLAUDE_API_VERSION environment variable is required when Claude is enabled');
       }
 
+      const maxTokens = parseInt(import.meta.env.VITE_CLAUDE_MAX_TOKENS);
+      const temperature = parseFloat(import.meta.env.VITE_CLAUDE_TEMPERATURE);
+      
+      // Validate parsed values before assignment
+      if (isNaN(maxTokens)) {
+        throw new Error('VITE_CLAUDE_MAX_TOKENS must be a valid number');
+      }
+      if (isNaN(temperature)) {
+        throw new Error('VITE_CLAUDE_TEMPERATURE must be a valid number');
+      }
+      
       this.config.claude = {
         apiKey: claudeApiKey,
         timeout: 60000, // Longer timeout for larger context
         maxRetries: 2,
         retryDelay: 2000,
         model: import.meta.env.VITE_CLAUDE_MODEL,
-        maxTokens: parseInt(import.meta.env.VITE_CLAUDE_MAX_TOKENS),
-        temperature: parseFloat(import.meta.env.VITE_CLAUDE_TEMPERATURE),
+        maxTokens: maxTokens,
+        temperature: temperature,
         baseUrl: import.meta.env.VITE_CLAUDE_BASE_URL,
         apiVersion: import.meta.env.VITE_CLAUDE_API_VERSION
       };
-      // Validate parsed values
-      if (isNaN(this.config.claude.maxTokens)) {
-        throw new Error('VITE_CLAUDE_MAX_TOKENS must be a valid number');
-      }
-      if (isNaN(this.config.claude.temperature)) {
-        throw new Error('VITE_CLAUDE_TEMPERATURE must be a valid number');
-      }
 
       logger.debug('Claude configuration loaded (enabled via feature flag)', {
         model: this.config.claude.model,
