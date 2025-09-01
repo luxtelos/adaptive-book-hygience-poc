@@ -116,7 +116,7 @@ export class ClaudeAdapter extends BaseLLMService {
     
     return {
       content: result.content[0].text,
-      tokensUsed: result.usage?.input_tokens + result.usage?.output_tokens,
+      tokensUsed: (result.usage?.input_tokens || 0) + (result.usage?.output_tokens || 0),
       provider: 'claude',
       model: result.model
     };

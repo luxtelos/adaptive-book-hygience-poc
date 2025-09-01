@@ -87,10 +87,10 @@ export class LLMServiceFactory {
         apiVersion: import.meta.env.VITE_CLAUDE_API_VERSION
       };
       // Validate parsed values
-      if (this.config.claude.maxTokens && isNaN(this.config.claude.maxTokens)) {
+      if (isNaN(this.config.claude.maxTokens)) {
         throw new Error('VITE_CLAUDE_MAX_TOKENS must be a valid number');
       }
-      if (this.config.claude.temperature !== undefined && isNaN(this.config.claude.temperature)) {
+      if (isNaN(this.config.claude.temperature)) {
         throw new Error('VITE_CLAUDE_TEMPERATURE must be a valid number');
       }
 

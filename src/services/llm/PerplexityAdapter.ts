@@ -81,9 +81,15 @@ export class PerplexityAdapter extends BaseLLMService {
 
     const result = await response.json();
     
+    // Validate response structure
+    if (!result.choices || !result.choices[0] || !result.choices[0].message || !result.choices[0].message.content) {
+      logger.error('Invalid Perplexity response structure', { result });
+      throw new Error('Invalid response structure from Perplexity API');
+    }
+    
     return {
       content: result.choices[0].message.content,
-      tokensUsed: result.usage?.total_tokens,
+      tokensUsed: result.usage?.total_tokens || 0,
       provider: 'perplexity',
       model: 'sonar-reasoning-pro'
     };
