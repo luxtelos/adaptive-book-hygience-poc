@@ -1,6 +1,7 @@
 import { logger } from "../lib/logger";
 import { FivePillarRawData, RawDataFormatter } from "./rawDataFormatter";
 import { LLMInputFormatter } from "./llmInputFormatter";
+import { LLMServiceFactory } from "./llm/LLMServiceFactory";
 
 /**
  * @file perplexityService.ts
@@ -119,109 +120,19 @@ export class PerplexityError extends Error {
 // =================================================================================
 
 export class PerplexityService {
-  private readonly config: PerplexityConfig;
-  private readonly API_BASE_URL = "https://api.perplexity.ai";
+  private readonly llmFactory: LLMServiceFactory;
 
   constructor(config?: Partial<PerplexityConfig>) {
-    logger.debug("Initializing PerplexityService...");
-
-    const apiKey = import.meta.env.VITE_PERPLEXITY_API_KEY;
-    if (!apiKey) {
-      throw new PerplexityError(
-        "VITE_PERPLEXITY_API_KEY environment variable is not set.",
-      );
-    }
-
-    this.config = {
-      apiKey,
-      model:
-        import.meta.env.VITE_PERPLEXITY_MODEL ||
-        config?.model ||
-        "sonar-reasoning-pro",
-      maxTokens: config?.maxTokens || 4000,
-      temperature: config?.temperature || 0.1, // Low temperature for consistent analysis
-      timeout: config?.timeout || 60000, // 60 seconds for complex analysis
-      ...config,
-    };
-
-    logger.info("PerplexityService initialized successfully");
+    logger.debug("Initializing PerplexityService with LLM abstraction...");
+    
+    // Initialize the LLM factory (singleton)
+    this.llmFactory = LLMServiceFactory.getInstance();
+    
+    logger.info("PerplexityService initialized with LLM abstraction layer");
   }
 
 
-  /**
-   * Loads the hygiene assessment prompt from the public directory.
-   */
-  private async loadAssessmentPrompt(): Promise<string> {
-    try {
-      const response = await fetch("/hygiene-assessment-prompt.txt");
-      if (!response.ok) {
-        throw new PerplexityError(
-          `Failed to load assessment prompt: ${response.statusText}`,
-        );
-      }
-      return await response.text();
-    } catch (error) {
-      logger.error("Failed to load hygiene assessment prompt", error);
-      throw new PerplexityError(
-        "Unable to load assessment prompt template",
-        undefined,
-        error,
-      );
-    }
-  }
-
-  /**
-   * Sends a request to the Perplexity API.
-   */
-  private async makeAPIRequest(messages: any[]): Promise<any> {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), this.config.timeout);
-
-    try {
-      const response = await fetch(`${this.API_BASE_URL}/chat/completions`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${this.config.apiKey}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: this.config.model,
-          messages,
-          max_tokens: this.config.maxTokens,
-          temperature: this.config.temperature,
-          stream: false,
-        }),
-        signal: controller.signal,
-      });
-
-      clearTimeout(timeoutId);
-
-      if (!response.ok) {
-        const errorBody = await response.text();
-        throw new PerplexityError(
-          `Perplexity API error: ${response.status} ${response.statusText}`,
-          response.status,
-          errorBody,
-        );
-      }
-
-      const result = await response.json();
-      return result;
-    } catch (error) {
-      clearTimeout(timeoutId);
-      if (error instanceof PerplexityError) {
-        throw error;
-      }
-      if (error instanceof Error && error.name === "AbortError") {
-        throw new PerplexityError("Request timed out", undefined, error);
-      }
-      throw new PerplexityError(
-        `Network error: ${error instanceof Error ? error.message : "Unknown error"}`,
-        undefined,
-        error,
-      );
-    }
-  }
+  // Note: loadAssessmentPrompt and makeAPIRequest methods are now handled by the LLM adapters
 
   /**
    * Parses the LLM text response to extract key findings and hygiene score.
@@ -811,38 +722,15 @@ export class PerplexityService {
   }
 
   /**
-   * Performs a complete accounting quality assessment using the Perplexity API.
-   * Now supports webhook assessment data format
+   * Performs a complete accounting quality assessment using LLM service abstraction.
+   * Automatically handles fallback from Perplexity to Claude based on data size.
    */
   public async analyzeAccountingQuality(
     rawData: FivePillarRawData | QBODataPackage | any,
   ): Promise<CompleteAssessmentResponse> {
-    logger.info("Starting accounting quality assessment with Perplexity AI");
+    logger.info("Starting accounting quality assessment with LLM abstraction");
 
     try {
-      // Load the assessment prompt
-      const systemPrompt = await this.loadAssessmentPrompt();
-
-      // Format the webhook data for analysis - webhook is the ONLY data source
-      const formattedData =
-        this.formatWebhookAssessmentDataForAnalysis(rawData);
-      logger.info("Formatting raw QBO webhook data for LLM analysis");
-
-      // Prepare the messages for the API
-      const messages = [
-        {
-          role: "system",
-          content: systemPrompt,
-        },
-        {
-          role: "user",
-          content: `Please analyze the following raw QuickBooks Online JSON data and provide a comprehensive financial books health assessment report.
-          Here is the QuickBooks Online data to analyze:
-
-          ${formattedData}`,
-        },
-      ];
-
       // Validate webhook data structure
       const validation = this.validateWebhookAssessmentData(rawData);
 
@@ -853,25 +741,17 @@ export class PerplexityService {
         });
       }
 
-      // Make the API request
-      logger.debug("Sending request to Perplexity API");
-      const apiResponse = await this.makeAPIRequest(messages);
-
-      if (
-        !apiResponse.choices ||
-        !apiResponse.choices[0] ||
-        !apiResponse.choices[0].message
-      ) {
-        throw new PerplexityError("Invalid API response structure");
-      }
-
-      const rawLLMResponse = apiResponse.choices[0].message.content;
-      logger.debug("Received assessment response from Perplexity API");
-
-      // Parse the structured response
-      const assessmentResult = this.parseAssessmentResponse(rawLLMResponse);
-
-      logger.info("Financial hygiene assessment completed successfully", {
+      // Use the LLM factory to analyze with automatic fallback
+      logger.info("Invoking LLM service factory with fallback chain");
+      const llmResult = await this.llmFactory.analyzeWithFallback(rawData);
+      
+      // Extract the assessment result and raw response
+      const assessmentResult = llmResult.assessmentResult;
+      const rawLLMResponse = llmResult.rawLLMResponse;
+      
+      logger.debug(`Assessment completed with ${llmResult.provider} provider`);
+      
+      logger.info("Assessment complete", {
         overallScore: assessmentResult.overallScore,
         readinessStatus: assessmentResult.readinessStatus,
       });
@@ -1061,23 +941,23 @@ export class PerplexityService {
   }
 
   /**
-   * Health check method to verify Perplexity API connectivity.
+   * Health check method to verify LLM service connectivity.
    */
   public async healthCheck(): Promise<boolean> {
     try {
-      const messages = [
-        {
-          role: "user",
-          content: "Please respond with 'OK' if you can process this request.",
-        },
-      ];
-
-      const response = await this.makeAPIRequest(messages);
-      return (
-        response.choices && response.choices[0] && response.choices[0].message
-      );
+      // Use the LLM factory to check health of all configured providers
+      const healthResults = await this.llmFactory.healthCheckAll();
+      
+      // Return true if at least one provider is healthy
+      const hasHealthyProvider = Object.values(healthResults).some(isHealthy => isHealthy);
+      
+      if (!hasHealthyProvider) {
+        logger.error("No healthy LLM providers available");
+      }
+      
+      return hasHealthyProvider;
     } catch (error) {
-      logger.error("Perplexity service health check failed", error);
+      logger.error("LLM service health check failed", error);
       return false;
     }
   }

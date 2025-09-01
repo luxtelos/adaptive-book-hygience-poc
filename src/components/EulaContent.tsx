@@ -70,8 +70,8 @@ const EulaContent: React.FC<EulaContentProps> = ({
         <HeadingComponent className={headingClasses}>
           3. User Responsibilities and Restrictions
         </HeadingComponent>
-        <p>
-          You are responsible for:
+        <div>
+          <p>You are responsible for:</p>
           <ul className="list-disc pl-5 mt-2">
             <li>(a) Maintaining the confidentiality and security of your account credentials;</li>
             <li>(b) All activities occurring under your account;</li>
@@ -80,7 +80,7 @@ const EulaContent: React.FC<EulaContentProps> = ({
             <li>(e) Reviewing AI-generated outputs for accuracy and appropriateness before use;</li>
             <li>(f) Complying with all AI governance and ethical use requirements applicable to your industry.</li>
           </ul>
-          You may not:
+          <p>You may not:</p>
           <ul className="list-disc pl-5 mt-2">
             <li>(a) Use the Services to violate any applicable law or regulation;</li>
             <li>(b) Interfere with or disrupt the Services or Company's systems;</li>
@@ -89,7 +89,7 @@ const EulaContent: React.FC<EulaContentProps> = ({
             <li>(e) Use the Services to develop competing AI products or services;</li>
             <li>(f) Attempt to extract, reverse engineer, or replicate the underlying AI models or algorithms.</li>
           </ul>
-        </p>
+        </div>
       </section>
 
       <section>
