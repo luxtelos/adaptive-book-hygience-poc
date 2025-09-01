@@ -59,20 +59,17 @@ export class LLMServiceFactory {
     const claudeApiKey = import.meta.env.VITE_CLAUDE_API_KEY;
     if (claudeEnabled && claudeApiKey) {
       // Validate required Claude configuration
-      if (!import.meta.env.VITE_CLAUDE_MODEL) {
-        throw new Error('VITE_CLAUDE_MODEL environment variable is required when Claude is enabled');
-      }
-      if (!import.meta.env.VITE_CLAUDE_MAX_TOKENS) {
-        throw new Error('VITE_CLAUDE_MAX_TOKENS environment variable is required when Claude is enabled');
-      }
-      if (!import.meta.env.VITE_CLAUDE_TEMPERATURE) {
-        throw new Error('VITE_CLAUDE_TEMPERATURE environment variable is required when Claude is enabled');
-      }
-      if (!import.meta.env.VITE_CLAUDE_BASE_URL) {
-        throw new Error('VITE_CLAUDE_BASE_URL environment variable is required when Claude is enabled');
-      }
-      if (!import.meta.env.VITE_CLAUDE_API_VERSION) {
-        throw new Error('VITE_CLAUDE_API_VERSION environment variable is required when Claude is enabled');
+      const requiredClaudeVars = [
+        'VITE_CLAUDE_MODEL',
+        'VITE_CLAUDE_MAX_TOKENS',
+        'VITE_CLAUDE_TEMPERATURE',
+        'VITE_CLAUDE_BASE_URL',
+        'VITE_CLAUDE_API_VERSION'
+      ];
+      for (const varName of requiredClaudeVars) {
+        if (!import.meta.env[varName]) {
+          throw new Error(`${varName} environment variable is required when Claude is enabled`);
+        }
       }
 
       const maxTokens = parseInt(import.meta.env.VITE_CLAUDE_MAX_TOKENS);
