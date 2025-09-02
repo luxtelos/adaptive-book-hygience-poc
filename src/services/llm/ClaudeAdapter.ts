@@ -6,7 +6,6 @@
 import { BaseLLMService } from "./BaseLLMService";
 import { LLMProvider, LLMMessage, LLMResponse, LLMConfig } from "./types";
 import { logger } from "@/lib/logger";
-import { LLMInputFormatter } from "../llmInputFormatter";
 
 export class ClaudeAdapter extends BaseLLMService {
   private readonly API_BASE_URL: string;
@@ -95,10 +94,7 @@ export class ClaudeAdapter extends BaseLLMService {
       headers: {
         "x-api-key": this.config.apiKey,
         "anthropic-version": this.apiVersion,
-<<<<<<< HEAD
         "anthropic-dangerous-direct-browser-access": "true",
-=======
->>>>>>> cb55593 (fix DOM rendition for EULA. adds adapters to llm apis viz perplexity and claude)
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
@@ -146,14 +142,8 @@ export class ClaudeAdapter extends BaseLLMService {
       // Load assessment prompt
       const systemPrompt = await this.loadAssessmentPrompt();
 
-      // Format the raw QBO data for LLM input
-      const inputData = {
-        webhookData: rawData,
-        calculatedAssessment: null,
-        formattedDate: new Date().toISOString(),
-        companyName: rawData.meta?.companyName || "Unknown Company",
-      };
-      const formattedData = LLMInputFormatter.formatForLLM(inputData);
+      // Send raw QBO data directly to LLM without any formatting
+      const formattedData = JSON.stringify(rawData);
 
       logger.debug(
         `Formatted data size: ${formattedData.length} chars, estimated tokens: ${this.estimateTokens(formattedData)}`,
@@ -351,10 +341,7 @@ export class ClaudeAdapter extends BaseLLMService {
         headers: {
           "x-api-key": this.config.apiKey,
           "anthropic-version": this.apiVersion,
-<<<<<<< HEAD
           "anthropic-dangerous-direct-browser-access": "true",
-=======
->>>>>>> cb55593 (fix DOM rendition for EULA. adds adapters to llm apis viz perplexity and claude)
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
