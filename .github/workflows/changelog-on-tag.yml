@@ -46,8 +46,8 @@ jobs:
         shell: bash
         run: |
           # Find "latest tag" (the one that triggered) is $GITHUB_REF_NAME
-          # Find previous tag by listing all tags sorted by commit time and skipping the latest.
-          PREV_TAG=$(git for-each-ref --sort=-creatordate --format='%(refname:short)' refs/tags \
+          # Find previous tag by listing all tags sorted by version and skipping the latest.
+          PREV_TAG=$(git tag --sort=-version:refname \
             | grep -v "^${GITHUB_REF_NAME}$" \
             | head -n 1)
           echo "PREV_TAG=$PREV_TAG" >> $GITHUB_ENV
