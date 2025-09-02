@@ -1,0 +1,77 @@
+name: Changelog on tag
+
+on:
+  push:
+    branches:
+      - main
+    tags: ["v*"] # run only when a version tag is pushed (e.g., v1.2.3)
+  workflow_dispatch: # allow manual runs if you need to debug
+
+concurrency:
+  group: changelog-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  changelog:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # need full history and all tags
+
+      - name: Count tags
+        id: tags
+        run: echo "COUNT=$(git tag | wc -l)" >> $GITHUB_ENV
+
+      # Guard: don't try to generate a changelog for the baseline tag itself
+      - name: Skip if this is the baseline tag
+        if: ${{ github.ref_name == 'v0.0.0' }}
+        run: echo "Baseline tag push detected; skipping." && exit 0
+
+      # First-run helper: if only one tag exists (the one that triggered this job),
+      # create a baseline previous tag at the *root commit* and push it.
+      - name: Create baseline tag v0.0.0 at root
+        if: ${{ env.COUNT == '1' }}
+        run: |
+          ROOT=$(git rev-list --max-parents=0 HEAD | tail -n 1)
+          git tag v0.0.0 "$ROOT"
+          git push origin v0.0.0
+        # --max-parents=0 lists root commits. We pick the first root commit.  See docs.
+
+      # Resolve the previous tag (the tag before the one that triggered this run)
+      - name: Resolve previous tag
+        id: prev
+        shell: bash
+        run: |
+          # Find "latest tag" (the one that triggered) is $GITHUB_REF_NAME
+          # Find previous tag by listing all tags sorted by commit time and skipping the latest.
+          PREV_TAG=$(git for-each-ref --sort=-creatordate --format='%(refname:short)' refs/tags \
+            | grep -v "^${GITHUB_REF_NAME}$" \
+            | head -n 1)
+          echo "PREV_TAG=$PREV_TAG" >> $GITHUB_ENV
+
+      - name: Verify previous tag exists
+        run: |
+          test -n "${{ env.PREV_TAG }}" || (echo "No previous tag found." && exit 1)
+
+      - name: Generate changelog (latest → previous)
+        id: changelog
+        uses: requarks/changelog-action@v1
+        with:
+          # Action expects tags; we pass latest and previous.
+          fromTag: ${{ github.ref_name }}
+          toTag: ${{ env.PREV_TAG }}
+          writeToFile: true
+
+      - name: Commit CHANGELOG.md
+        if: ${{ steps.changelog.outputs.changes != '' }}
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "actions@github.com"
+          git add CHANGELOG.md
+          git commit -m "docs: update changelog for ${{ github.ref_name }}" || true
+          git push
