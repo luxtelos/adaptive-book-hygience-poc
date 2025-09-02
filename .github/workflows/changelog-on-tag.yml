@@ -87,8 +87,9 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.PAT_TOKEN }}
         with:
-          commit-message: "docs: update changelog for main ${{ github.ref_name }}"
-          branch: "chore/update-changelog/${{ github.ref_name }}"
+          commit-message: "docs: update changelog for main pr-${{ github.run_id }}"
+          branch: "chore/update-changelog/pr-${{ github.run_id }}"
           title: "docs: update changelog for main"
           body: "Automated changelog update"
-          base: main
+          base: chore/update-changelog/main
+          delete-branch: true
