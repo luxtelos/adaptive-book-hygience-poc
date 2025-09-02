@@ -64,6 +64,7 @@ jobs:
           fromTag: ${{ github.ref_name }}
           toTag: ${{ env.PREV_TAG }}
           writeToFile: true
+          token: ${{ secrets.GITHUB_TOKEN }}  # Parameter token or opts.auth is required at requarks/changelog-action
 
       - name: Commit CHANGELOG.md
         if: ${{ steps.changelog.outputs.changes != '' }}
