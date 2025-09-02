@@ -266,7 +266,6 @@ const Assessment = ({
   // PDF generation state
   const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
   const [showDetailedViewer, setShowDetailedViewer] = useState(false);
-  const [showPillarViewer, setShowPillarViewer] = useState(false);
   const [pdfError, setPdfError] = useState<string | null>(null);
 
   const mockAssessmentResults: AssessmentResults = {
@@ -2375,15 +2374,6 @@ const Assessment = ({
                     Available Actions
                   </h3>
                   <div className="flex flex-wrap gap-3">
-                    {webhookData && (
-                      <button
-                        onClick={() => setShowPillarViewer(true)}
-                        className="flex items-center bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition-colors"
-                      >
-                        <MagnifyingGlassIcon className="w-4 h-4 mr-2" />
-                        View Detailed Pillar Data
-                      </button>
-                    )}
                     {hasAssessmentResults && (
                       <>
                         <button
@@ -2420,15 +2410,6 @@ const Assessment = ({
                     Technical Remediation Plan
                   </h2>
                   <div className="flex items-center space-x-3">
-                    {webhookData && (
-                      <button
-                        onClick={() => setShowPillarViewer(true)}
-                        className="flex items-center bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition-colors"
-                      >
-                        <MagnifyingGlassIcon className="w-4 h-4 mr-2" />
-                        View Pillar Data
-                      </button>
-                    )}
                     {hasAssessmentResults && (
                       <>
                         <button
@@ -2648,32 +2629,6 @@ const Assessment = ({
           </div>
         )}
         
-        {/* Pillar Data Viewer Modal */}
-        {showPillarViewer && webhookData && (
-          <div className="fixed inset-0 z-50 overflow-y-auto">
-            <div className="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:block sm:p-0">
-              {/* Background overlay */}
-              <div 
-                className="fixed inset-0 transition-opacity bg-gray-500 bg-opacity-75"
-                onClick={() => setShowPillarViewer(false)}
-              />
-              
-              {/* Modal content */}
-              <div className="inline-block w-full max-w-6xl px-4 pt-5 pb-4 overflow-hidden text-left align-bottom transition-all transform bg-white rounded-lg shadow-xl sm:my-8 sm:align-middle sm:p-6">
-                <div className="flex justify-between items-center mb-4">
-                  <h2 className="text-2xl font-bold">Accounting Quality Pillar Data</h2>
-                  <button
-                    onClick={() => setShowPillarViewer(false)}
-                    className="text-gray-400 hover:text-gray-600 transition-colors"
-                  >
-                    <CrossCircledIcon className="w-6 h-6" />
-                  </button>
-                </div>
-                {/* Raw data viewer removed - data shown in tables */}
-              </div>
-            </div>
-          </div>
-        )}
         
         {/* Detailed Assessment Viewer Modal */}
         {showDetailedViewer && assessmentResults && (
