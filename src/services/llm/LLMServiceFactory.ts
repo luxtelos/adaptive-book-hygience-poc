@@ -6,6 +6,7 @@
 import { ILLMService, LLMProviderType, LLMConfig } from "./types";
 import { PerplexityAdapter } from "./PerplexityAdapter";
 import { ClaudeAdapter } from "./ClaudeAdapter";
+import { ClaudeAsyncAdapter } from "./ClaudeAsyncAdapter";
 import { logger } from "@/lib/logger";
 import { toast } from "./toast";
 
@@ -145,6 +146,13 @@ export class LLMServiceFactory {
         service = new ClaudeAdapter(this.config.claude);
         break;
 
+      case LLMProviderType.CLAUDE_ASYNC:
+        if (!this.config.claude) {
+          throw new Error("Claude API key not configured");
+        }
+        service = new ClaudeAsyncAdapter(this.config.claude);
+        break;
+
       default:
         throw new Error(`Unknown LLM provider: ${provider}`);
     }
@@ -157,31 +165,55 @@ export class LLMServiceFactory {
   }
 
   /**
-   * Select optimal provider based on data size
-   * Returns Perplexity for small data, Claude for large data
+   * Select optimal provider based on data size with async threshold routing
+   * Returns Perplexity for small data, Claude async for large data, Claude sync as fallback
    */
   selectOptimalProvider(dataSize: number): ILLMService {
     const estimatedTokens = Math.ceil(dataSize / 4); // 1 token ≈ 4 characters
     const perplexityLimit = 3200; // 80% of 4000 tokens for safety
+    
+    // Get async threshold from environment (default 20000 chars = ~5000 tokens)
+    const asyncThreshold = parseInt(import.meta.env.VITE_CLAUDE_BATCH_THRESHOLD || '20000');
+    const asyncEnabled = import.meta.env.VITE_CLAUDE_BATCH_ENABLED === 'true';
 
     logger.debug(
-      `Selecting provider for data size: ${dataSize} chars (≈${estimatedTokens} tokens)`,
+      `Selecting provider for data size: ${dataSize} chars (≈${estimatedTokens} tokens)`, {
+        perplexityLimit,
+        asyncThreshold,
+        asyncEnabled
+      }
     );
 
+    // Route 1: Small datasets to Perplexity
     if (estimatedTokens <= perplexityLimit && this.config.perplexity) {
       logger.info("Selected Perplexity for small dataset");
       return this.createService(LLMProviderType.PERPLEXITY);
-    } else if (this.config.claude) {
-      logger.info("Selected Claude for large dataset");
+    }
+
+    // Route 2: Large datasets to Claude Async (if enabled and above threshold)
+    if (asyncEnabled && dataSize >= asyncThreshold && this.config.claude) {
+      logger.info("Selected Claude Async for large dataset", { 
+        dataSize, 
+        threshold: asyncThreshold 
+      });
+      return this.createService(LLMProviderType.CLAUDE_ASYNC);
+    }
+
+    // Route 3: Medium datasets to Claude Sync
+    if (this.config.claude) {
+      logger.info("Selected Claude Sync for medium dataset");
       return this.createService(LLMProviderType.CLAUDE);
-    } else if (this.config.perplexity) {
+    }
+
+    // Fallback: Try Perplexity despite size limits
+    if (this.config.perplexity) {
       logger.warn(
         "Claude not available, attempting Perplexity despite large dataset",
       );
       return this.createService(LLMProviderType.PERPLEXITY);
-    } else {
-      throw new Error("No LLM providers configured");
     }
+
+    throw new Error("No LLM providers configured");
   }
 
   /**
