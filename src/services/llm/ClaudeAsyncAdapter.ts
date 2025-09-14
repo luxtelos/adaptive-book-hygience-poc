@@ -88,7 +88,7 @@ export class ClaudeAsyncAdapter extends BaseLLMService implements AsyncLLMServic
    * Submit a batch request to Claude API
    */
   async submitBatch(rawData: any): Promise<string> {
-    const customId = `assessment-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    const customId = `assessment-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
     
     try {
       // Load assessment prompt
@@ -326,7 +326,7 @@ export class ClaudeAsyncAdapter extends BaseLLMService implements AsyncLLMServic
     const intervalsStr = import.meta.env.VITE_CLAUDE_BATCH_POLL_INTERVALS || '0,2000,4000,8000,16000';
     
     try {
-      return intervalsStr.split(',').map(s => parseInt(s.trim()));
+      return intervalsStr.split(',').map((s: string) => parseInt(s.trim()));
     } catch (error) {
       logger.error('Failed to parse poll intervals, using defaults', { intervalsStr, error });
       return [0, 2000, 4000, 8000, 16000]; // Default intervals
@@ -425,6 +425,36 @@ Execute assessment now.`;
       keyFindings,
       nextSteps,
     };
+  }
+
+  /**
+   * Implementation of abstract method from BaseLLMService
+   * Not used in async adapter - batch API handles requests differently
+   */
+  protected async makeProviderSpecificRequest(
+    messages: LLMMessage[], 
+    signal: AbortSignal
+  ): Promise<LLMResponse> {
+    throw new Error('makeProviderSpecificRequest not used in Claude Async Adapter. Use analyzeAccountingQuality instead.');
+  }
+
+  /**
+   * Health check to verify Claude API availability
+   */
+  async healthCheck(): Promise<boolean> {
+    try {
+      const response = await fetch(`${this.config.baseUrl}/messages`, {
+        method: 'HEAD',
+        headers: this.getHeaders(),
+        signal: AbortSignal.timeout(5000)
+      });
+      
+      // Return true if we get any response (including 401/403 which means API is up)
+      return response.status < 500;
+    } catch (error) {
+      logger.error('Claude health check failed', { error });
+      return false;
+    }
   }
 
   /**

@@ -173,13 +173,15 @@ export class LLMServiceFactory {
     const perplexityLimit = 3200; // 80% of 4000 tokens for safety
     
     // Get async threshold from environment (default 20000 chars = ~5000 tokens)
-    const asyncThreshold = parseInt(import.meta.env.VITE_CLAUDE_BATCH_THRESHOLD || '20000');
+    const asyncThresholdStr = import.meta.env.VITE_CLAUDE_BATCH_THRESHOLD;
+    const asyncThreshold = parseInt(asyncThresholdStr);
+    const validAsyncThreshold = isNaN(asyncThreshold) ? 20000 : asyncThreshold;
     const asyncEnabled = import.meta.env.VITE_CLAUDE_BATCH_ENABLED === 'true';
 
     logger.debug(
       `Selecting provider for data size: ${dataSize} chars (≈${estimatedTokens} tokens)`, {
         perplexityLimit,
-        asyncThreshold,
+        asyncThreshold: validAsyncThreshold,
         asyncEnabled
       }
     );
@@ -191,10 +193,10 @@ export class LLMServiceFactory {
     }
 
     // Route 2: Large datasets to Claude Async (if enabled and above threshold)
-    if (asyncEnabled && dataSize >= asyncThreshold && this.config.claude) {
+    if (asyncEnabled && dataSize >= validAsyncThreshold && this.config.claude) {
       logger.info("Selected Claude Async for large dataset", { 
         dataSize, 
-        threshold: asyncThreshold 
+        threshold: validAsyncThreshold 
       });
       return this.createService(LLMProviderType.CLAUDE_ASYNC);
     }
