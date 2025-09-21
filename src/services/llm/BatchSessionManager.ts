@@ -6,6 +6,18 @@
 import { BatchJob } from './types';
 import { logger } from '@/lib/logger';
 
+// Type definition for Clerk window object
+interface ClerkWindow extends Window {
+  Clerk?: {
+    addListener: (event: 'signOut' | 'signIn', callback: () => void) => void;
+    removeListener?: (event: 'signOut' | 'signIn', callback: () => void) => void;
+    user?: {
+      id?: string;
+      email?: string;
+    };
+  };
+}
+
 export class BatchSessionManager {
   private static readonly STORAGE_KEY = 'claude_batch_jobs';
   private static readonly MAX_JOBS = 10; // Limit to prevent quota issues

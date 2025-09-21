@@ -90,6 +90,12 @@ export class ClaudeAsyncAdapter extends BaseLLMService implements AsyncLLMServic
   async submitBatch(rawData: any): Promise<string> {
     const customId = `assessment-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
     
+    logger.info('Submitting batch request to Claude API', {
+      customId,
+      dataSize: JSON.stringify(rawData).length,
+      model: this.config.model
+    });
+    
     try {
       // Load assessment prompt
       const systemPrompt = await this.loadAssessmentPrompt();
@@ -238,6 +244,8 @@ export class ClaudeAsyncAdapter extends BaseLLMService implements AsyncLLMServic
    * Check batch status via API
    */
   async pollBatchStatus(batchId: string): Promise<BatchResponse> {
+    logger.trace(`Checking batch status for ${batchId}`);
+    
     const response = await fetch(`${this.batchApiUrl}/${batchId}`, {
       method: 'GET',
       headers: this.getHeaders()
@@ -245,16 +253,30 @@ export class ClaudeAsyncAdapter extends BaseLLMService implements AsyncLLMServic
 
     if (!response.ok) {
       const errorBody = await response.text();
+      logger.error('Batch status check failed', {
+        batchId,
+        status: response.status,
+        errorBody
+      });
       throw new Error(`Status check failed: ${response.status} ${errorBody}`);
     }
 
-    return await response.json();
+    const batchStatus = await response.json();
+    logger.trace('Batch status retrieved', {
+      batchId,
+      processingStatus: batchStatus.processing_status,
+      requestCounts: batchStatus.request_counts
+    });
+    
+    return batchStatus;
   }
 
   /**
    * Retrieve batch results from the results URL
    */
   async retrieveBatchResults(resultsUrl: string): Promise<BatchResult[]> {
+    logger.info('Retrieving batch results', { resultsUrl });
+    
     const response = await fetch(resultsUrl, {
       method: 'GET',
       headers: this.getHeaders()
@@ -262,11 +284,18 @@ export class ClaudeAsyncAdapter extends BaseLLMService implements AsyncLLMServic
 
     if (!response.ok) {
       const errorBody = await response.text();
+      logger.error('Batch results retrieval failed', {
+        resultsUrl,
+        status: response.status,
+        errorBody
+      });
       throw new Error(`Results retrieval failed: ${response.status} ${errorBody}`);
     }
 
     const resultsText = await response.text();
     const results: BatchResult[] = [];
+    
+    logger.debug('Parsing batch results in JSONL format');
     
     // Parse JSONL format (one JSON object per line)
     const lines = resultsText.trim().split('\n');
@@ -275,12 +304,16 @@ export class ClaudeAsyncAdapter extends BaseLLMService implements AsyncLLMServic
         try {
           results.push(JSON.parse(line));
         } catch (error) {
-          logger.error('Failed to parse result line', { line, error });
+          logger.error('Failed to parse result line', { 
+            linePreview: line.substring(0, 100), // Only log first 100 chars for security
+            error: error instanceof Error ? error.message : String(error)
+          });
         }
       }
     }
 
     if (results.length === 0) {
+      logger.error('No valid results found in batch response');
       throw new Error('No valid results found in response');
     }
 
@@ -288,9 +321,18 @@ export class ClaudeAsyncAdapter extends BaseLLMService implements AsyncLLMServic
     const errorResults = results.filter(r => r.result.type === 'errored');
     if (errorResults.length > 0) {
       const error = errorResults[0].result.error!;
+      logger.error('Batch processing returned errors', {
+        errorCount: errorResults.length,
+        firstError: error
+      });
       throw new Error(`Batch request failed: ${error.type} - ${error.message}`);
     }
 
+    logger.info('Batch results parsed successfully', {
+      totalResults: results.length,
+      successfulResults: results.filter(r => r.result.type === 'succeeded').length
+    });
+    
     return results;
   }
 
@@ -337,9 +379,21 @@ export class ClaudeAsyncAdapter extends BaseLLMService implements AsyncLLMServic
    * Get headers for API requests
    */
   private getHeaders(): Record<string, string> {
+    // Validate API version is provided for batch operations
+    if (!this.config.apiVersion) {
+      const errorMsg = 'ClaudeAsyncAdapter: config.apiVersion is required for batch operations';
+      logger.error(errorMsg);
+      throw new Error(errorMsg);
+    }
+
+    logger.trace('Preparing Claude API headers', { 
+      apiVersion: this.config.apiVersion,
+      model: this.config.model 
+    });
+
     return {
       'x-api-key': this.config.apiKey,
-      'anthropic-version': this.config.apiVersion || '2023-06-01',
+      'anthropic-version': this.config.apiVersion,
       'anthropic-dangerous-direct-browser-access': 'true',
       'content-type': 'application/json'
     };
@@ -435,7 +489,16 @@ Execute assessment now.`;
     messages: LLMMessage[], 
     signal: AbortSignal
   ): Promise<LLMResponse> {
-    throw new Error('makeProviderSpecificRequest not used in Claude Async Adapter. Use analyzeAccountingQuality instead.');
+    logger.warn('makeProviderSpecificRequest called on ClaudeAsyncAdapter - returning unsupported response');
+    
+    // Return a properly structured response indicating operation not supported
+    // This maintains LSP compliance while clearly indicating the method shouldn't be used
+    return {
+      content: 'This operation is not supported in ClaudeAsyncAdapter. Please use analyzeAccountingQuality() method instead for batch processing.',
+      provider: 'claude-async',
+      model: this.config.model || 'claude-opus-4-20250514',
+      tokensUsed: 0
+    };
   }
 
   /**
