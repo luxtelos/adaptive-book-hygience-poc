@@ -231,11 +231,14 @@ export class BatchSessionManager {
     });
 
     // Listen for Clerk logout events if available
-    if (typeof window !== 'undefined' && (window as any).Clerk) {
-      (window as any).Clerk.addListener('signOut', () => {
-        this.clearAllJobs();
-        logger.debug('Cleared batch jobs on user sign out');
-      });
+    if (typeof window !== 'undefined') {
+      const clerkWindow = window as ClerkWindow;
+      if (clerkWindow.Clerk) {
+        clerkWindow.Clerk.addListener('signOut', () => {
+          this.clearAllJobs();
+          logger.debug('Cleared batch jobs on user sign out');
+        });
+      }
     }
   }
 }
