@@ -68,7 +68,7 @@ export function useBatchProgress(): [BatchProgressState, BatchProgressActions] {
     const remainingPolls = maxPolls - currentPoll;
     
     if (remainingPolls <= 0) return 0;
-    if (currentPoll >= pollTimes.length) return 30000 - elapsed;
+    if (currentPoll >= pollTimes.length) return Math.max(0, 30000 - elapsed);
     
     return pollTimes[pollTimes.length - 1] - elapsed;
   };
