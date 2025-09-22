@@ -180,7 +180,10 @@ export class ClaudeAsyncAdapter extends BaseLLMService implements AsyncLLMServic
       }
 
       // Wait for the appropriate interval (cumulative timing)
-      const targetTime = this.pollIntervals[attempt];
+      // Prevent array out-of-bounds by using the last interval for attempts beyond array length
+      const targetTime = attempt < this.pollIntervals.length 
+        ? this.pollIntervals[attempt] 
+        : this.pollIntervals[this.pollIntervals.length - 1];
       if (elapsedTime < targetTime) {
         const waitTime = targetTime - elapsedTime;
         logger.debug(`Waiting ${waitTime}ms before poll ${attempt + 1}`, { batchId });
