@@ -59,8 +59,9 @@ export class LLMServiceFactory {
     }
 
     // Claude configuration
+    // TODO: remove SECRETS_SCAN_SMART_DETECTION_ENABLED=false and revert to proxy handling
     const claudeApiKey = import.meta.env.VITE_CLAUDE_API_KEY;
-    if (claudeEnabled && claudeApiKey) {
+    if (claudeEnabled) {
       // Validate required Claude configuration
       const requiredClaudeVars = [
         "VITE_CLAUDE_MODEL",

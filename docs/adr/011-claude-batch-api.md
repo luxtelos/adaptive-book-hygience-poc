@@ -1,19 +1,12 @@
-# Architecture Decision Record (ADR)
+# ADR-011: Implement Claude Batch API for Large Dataset Processing
 
-## ADR-001: Implement Claude Batch API for Large Dataset Processing
-
-**Status:** Proposed  
-**Date:** 2025-09-12  
-**Authors:** Technical Consulting Team  
-**Reviewers:** Development Team, Operations Team, Business Stakeholders  
-
----
-
-## Executive Summary
-
-This ADR proposes implementing Claude Batch API with asynchronous polling to resolve 504 Gateway Timeout issues when processing large QuickBooks Online (QBO) datasets exceeding 28,000 tokens. The solution maintains user experience while ensuring reliable processing of complex financial assessments.
+Date: 2025-09-12  
+Status: Proposed  
+Commit: [Pending implementation]
 
 ## Context
+
+This ADR proposes implementing Claude Batch API with asynchronous polling to resolve 504 Gateway Timeout issues when processing large QuickBooks Online (QBO) datasets exceeding 28,000 tokens. The solution maintains user experience while ensuring reliable processing of complex financial assessments.
 
 ### Current State
 The application currently uses synchronous API calls to Claude for financial data analysis, which works well for small to medium datasets but fails for large enterprise accounts.

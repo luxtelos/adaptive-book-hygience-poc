@@ -92,6 +92,7 @@ export class ClaudeAdapter extends BaseLLMService {
     const response = await fetch(`${this.API_BASE_URL}/messages`, {
       method: "POST",
       headers: {
+        // TODO: remove SECRETS_SCAN_SMART_DETECTION_ENABLED=false and revert to proxy
         "x-api-key": this.config.apiKey,
         "anthropic-version": this.apiVersion,
         "anthropic-dangerous-direct-browser-access": "true",

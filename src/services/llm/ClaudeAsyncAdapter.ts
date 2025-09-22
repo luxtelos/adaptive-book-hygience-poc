@@ -392,7 +392,8 @@ export class ClaudeAsyncAdapter extends BaseLLMService implements AsyncLLMServic
     });
 
     return {
-      'x-api-key': this.config.apiKey,
+      // API key is added by proxy server, not needed in frontend
+      // 'x-api-key': this.config.apiKey,  // REMOVED - proxy handles this
       'anthropic-version': this.config.apiVersion,
       'anthropic-dangerous-direct-browser-access': 'true',
       'content-type': 'application/json'
