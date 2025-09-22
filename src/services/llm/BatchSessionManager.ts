@@ -154,7 +154,8 @@ export class BatchSessionManager {
       sessionStorage.setItem(test, test);
       sessionStorage.removeItem(test);
       return true;
-    } catch {
+    } catch (error) {
+      logger.error('Failed to check storage availability', { error });
       return false;
     }
   }
